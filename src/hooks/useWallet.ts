@@ -1,11 +1,19 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { StarkSigner, ArgentPreset } from "starkzap";
 import type { Wallet } from "starkzap";
 import { sdk } from "../lib/sdk";
 
-// Demo private key — valid on Stark curve (248-bit, always < n)
-const DEMO_PRIVATE_KEY =
-  "0x00c1e9550e66958296d11b60f8e8e7a7ad990d07fa65d5f7652c4a6c87d4e3cc";
+const KEY_STORAGE = "btch_demo_key";
+
+function getOrCreateSessionKey(): string {
+  let key = localStorage.getItem(KEY_STORAGE);
+  if (!key) {
+    const bytes = crypto.getRandomValues(new Uint8Array(31));
+    key = "0x00" + Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem(KEY_STORAGE, key);
+  }
+  return key;
+}
 
 export interface WalletState {
   wallet: Wallet | null;
@@ -26,12 +34,13 @@ export function useWallet(): WalletState {
     setIsConnecting(true);
     setError(null);
     try {
-      console.log("[BTC Health] Connecting demo wallet on Sepolia…");
-      const signer = new StarkSigner(DEMO_PRIVATE_KEY);
+      const privKey = getOrCreateSessionKey();
+      console.log("[BTC Health] Connecting to Sepolia…");
+      const signer = new StarkSigner(privKey);
       const w = await sdk.connectWallet({
         account: { signer, accountClass: ArgentPreset },
       });
-      console.log("[BTC Health] Connected:", w.address);
+      console.log("[BTC Health] Wallet:", w.address);
       setWallet(w);
     } catch (e) {
       console.error("[BTC Health] Connect failed:", e);
@@ -41,9 +50,18 @@ export function useWallet(): WalletState {
     }
   }, []);
 
+  // Auto-connect if a key already exists in storage (returning user)
+  useEffect(() => {
+    if (localStorage.getItem(KEY_STORAGE)) {
+      connect();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const disconnect = useCallback(() => {
     setWallet(null);
     setError(null);
+    localStorage.removeItem(KEY_STORAGE);
   }, []);
 
   return {

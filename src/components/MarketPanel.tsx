@@ -1,42 +1,42 @@
 import type { LendingMarket, Token } from "starkzap";
-import { useLendingMarkets } from "../hooks/useLendingMarkets";
-import type { Wallet } from "starkzap";
 
 interface Props {
-  wallet: Wallet;
+  markets: LendingMarket[];
+  loading: boolean;
   activeCollateral: Token;
   activeDebt: Token;
-  onSelectMarket: (collateral: Token, debt: Token) => void;
+  activePool: string | null;
+  onSelectMarket: (collateral: Token, poolAddress: string) => void;
 }
 
-function apy(val: unknown): string {
+function fmtApy(val: unknown): string {
   if (!val) return "—";
-  // Amount object
-  if (typeof val === "object" && val !== null && "toUnit" in val) {
-    return `${(parseFloat((val as { toUnit: () => string }).toUnit()) * 100).toFixed(2)}%`;
-  }
+  try {
+    if (typeof val === "object" && val !== null && "toUnit" in val) {
+      const n = parseFloat((val as { toUnit: () => string }).toUnit()) * 100;
+      return n.toFixed(2) + "%";
+    }
+  } catch {}
   return "—";
 }
 
-export function MarketPanel({ wallet, activeCollateral, activeDebt, onSelectMarket }: Props) {
-  const { markets, loading } = useLendingMarkets(wallet);
-
+export function MarketPanel({ markets, loading, activeCollateral, activePool, onSelectMarket }: Props) {
   if (loading) {
     return (
-      <div className="card market-panel">
-        <h3 className="card-title">Markets</h3>
+      <div className="card">
+        <div className="card-title">Markets</div>
         <div className="skeleton-rows">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton-row" />
-          ))}
+          {[1, 2, 3].map((i) => <div key={i} className="skeleton-row" />)}
         </div>
       </div>
     );
   }
 
+  if (!markets.length) return null;
+
   return (
-    <div className="card market-panel">
-      <h3 className="card-title">Markets</h3>
+    <div className="card">
+      <div className="card-title">Available Markets</div>
       <table className="market-table">
         <thead>
           <tr>
@@ -50,26 +50,35 @@ export function MarketPanel({ wallet, activeCollateral, activeDebt, onSelectMark
         </thead>
         <tbody>
           {markets.map((m: LendingMarket) => {
-            const isActive =
-              m.asset.address.toLowerCase() ===
-              activeCollateral.address.toLowerCase();
+            const isActivePool = m.poolAddress.toLowerCase() === activePool?.toLowerCase();
+            const isActiveAsset = m.asset.address.toLowerCase() === activeCollateral.address.toLowerCase();
+            const isActive = isActivePool && isActiveAsset;
             return (
-              <tr key={`${m.poolAddress}-${m.asset.address}`} className={isActive ? "row-active" : ""}>
-                <td>{m.asset.symbol}</td>
-                <td className="muted small">{m.poolName ?? m.poolAddress.slice(0, 8) + "…"}</td>
-                <td>{m.canBeBorrowed ? "✓" : "—"}</td>
-                <td>{apy(m.stats?.supplyApy)}</td>
-                <td>{apy(m.stats?.borrowApr)}</td>
+              <tr
+                key={`${m.poolAddress}-${m.asset.address}`}
+                className={isActive ? "row-active" : ""}
+              >
                 <td>
-                  {m.canBeBorrowed && (
-                    <button
-                      className="btn-ghost small"
-                      onClick={() => onSelectMarket(m.asset, activeDebt)}
-                      disabled={isActive}
-                    >
-                      {isActive ? "Active" : "Use"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {isActive && <div className="dot dot-green" />}
+                    <strong>{m.asset.symbol}</strong>
+                  </div>
+                </td>
+                <td className="muted small">
+                  {m.poolName ?? m.poolAddress.slice(0, 6) + "…" + m.poolAddress.slice(-4)}
+                </td>
+                <td>{m.canBeBorrowed ? <span style={{ color: "var(--green)" }}>✓</span> : <span className="muted">—</span>}</td>
+                <td>{fmtApy(m.stats?.supplyApy)}</td>
+                <td>{fmtApy(m.stats?.borrowApr)}</td>
+                <td>
+                  <button
+                    className="btn-ghost small"
+                    disabled={isActive}
+                    onClick={() => onSelectMarket(m.asset, m.poolAddress)}
+                    style={isActive ? { color: "var(--green)" } : {}}
+                  >
+                    {isActive ? "Active" : "Use"}
+                  </button>
                 </td>
               </tr>
             );

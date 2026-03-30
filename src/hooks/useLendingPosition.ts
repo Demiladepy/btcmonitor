@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Wallet, Token } from "starkzap";
+import type { Wallet, Token, Address } from "starkzap";
 
 export interface LendingPositionState {
   collateralAmount: bigint;
@@ -13,7 +13,7 @@ export interface LendingPositionState {
   refresh: () => void;
 }
 
-const EMPTY_POSITION: Omit<LendingPositionState, "loading" | "error" | "refresh"> = {
+const EMPTY: Omit<LendingPositionState, "loading" | "error" | "refresh"> = {
   collateralAmount: 0n,
   debtAmount: 0n,
   collateralValue: 0n,
@@ -22,40 +22,44 @@ const EMPTY_POSITION: Omit<LendingPositionState, "loading" | "error" | "refresh"
   healthRatio: Infinity,
 };
 
-function isNoPositionError(e: unknown): boolean {
-  const msg = String(e);
+function isNoPosition(e: unknown): boolean {
+  const s = String(e).toLowerCase();
   return (
-    msg.includes("asset-config-nonexistent") ||
-    msg.includes("pool-not-found") ||
-    msg.includes("position-not-found") ||
-    msg.includes("not found")
+    s.includes("asset-config-nonexistent") ||
+    s.includes("pool-not-found") ||
+    s.includes("position-not-found") ||
+    s.includes("not found") ||
+    s.includes("nonexistent")
   );
 }
 
 export function useLendingPosition(
   wallet: Wallet | null,
   collateralToken: Token,
-  debtToken: Token
+  debtToken: Token,
+  poolAddress: string | null
 ): LendingPositionState {
   const [state, setState] = useState<Omit<LendingPositionState, "refresh">>({
-    ...EMPTY_POSITION,
+    ...EMPTY,
     loading: false,
     error: null,
   });
-
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchPosition = useCallback(async () => {
-    if (!wallet) return;
+    if (!wallet || !poolAddress) return;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
+      const req = {
+        collateralToken,
+        debtToken,
+        poolAddress: poolAddress as unknown as Address,
+      };
       const [position, health] = await Promise.all([
-        wallet.lending().getPosition({ collateralToken, debtToken }),
-        wallet.lending().getHealth({ collateralToken, debtToken }),
+        wallet.lending().getPosition(req),
+        wallet.lending().getHealth(req),
       ]);
-
-      const collateralValue = health.collateralValue;
-      const debtValue = health.debtValue;
+      const { collateralValue, debtValue } = health;
       const healthRatio =
         debtValue === 0n ? Infinity : Number(collateralValue) / Number(debtValue);
 
@@ -70,9 +74,8 @@ export function useLendingPosition(
         error: null,
       });
     } catch (e) {
-      if (isNoPositionError(e)) {
-        // No position exists yet — show zeros, not an error
-        setState({ ...EMPTY_POSITION, loading: false, error: null });
+      if (isNoPosition(e)) {
+        setState({ ...EMPTY, loading: false, error: null });
       } else {
         setState((s) => ({
           ...s,
@@ -81,16 +84,14 @@ export function useLendingPosition(
         }));
       }
     }
-  }, [wallet, collateralToken, debtToken]);
+  }, [wallet, collateralToken, debtToken, poolAddress]);
 
   useEffect(() => {
-    if (!wallet) return;
+    if (!wallet || !poolAddress) return;
     fetchPosition();
     intervalRef.current = setInterval(fetchPosition, 15_000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [wallet, fetchPosition]);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [wallet, poolAddress, fetchPosition]);
 
   return { ...state, refresh: fetchPosition };
 }

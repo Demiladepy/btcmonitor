@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { Amount } from "starkzap";
-import type { Wallet, Token } from "starkzap";
+import type { Wallet, Token, Address } from "starkzap";
 
-interface QuoteHealthState {
+interface QuoteState {
   currentHealth: number;
   projectedHealth: number;
-  simulation: unknown;
   loading: boolean;
   error: Error | null;
+}
+
+function isNoPosition(e: unknown): boolean {
+  const s = String(e).toLowerCase();
+  return s.includes("asset-config-nonexistent") || s.includes("nonexistent") || s.includes("not found");
 }
 
 export function useQuoteHealth(
@@ -15,76 +19,63 @@ export function useQuoteHealth(
   collateralToken: Token,
   debtToken: Token,
   action: "borrow" | "repay",
-  amount: string
-): QuoteHealthState {
-  const [state, setState] = useState<QuoteHealthState>({
+  amount: string,
+  poolAddress: string | null
+): QuoteState {
+  const [state, setState] = useState<QuoteState>({
     currentHealth: Infinity,
     projectedHealth: Infinity,
-    simulation: null,
     loading: false,
     error: null,
   });
-
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!wallet || !amount || parseFloat(amount) <= 0) {
-      setState((s) => ({ ...s, loading: false }));
+    if (!wallet || !poolAddress || !amount || parseFloat(amount) <= 0) {
+      setState((s) => ({ ...s, loading: false, error: null }));
       return;
     }
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
-        const parsedAmount = Amount.parse(amount, debtToken);
+        const pool = poolAddress as unknown as Address;
+        const parsed = Amount.parse(amount, debtToken);
         const quote = await wallet.lending().quoteHealth({
           action: {
             action,
-            request: { collateralToken, debtToken, amount: parsedAmount },
+            request: { collateralToken, debtToken, amount: parsed, poolAddress: pool },
           },
-          health: { collateralToken, debtToken },
+          health: { collateralToken, debtToken, poolAddress: pool },
           feeMode: "sponsored",
         });
 
-        const currentDebt = quote.current.debtValue;
-        const currentCollateral = quote.current.collateralValue;
-        const currentHealth =
-          currentDebt === 0n
-            ? Infinity
-            : Number(currentCollateral) / Number(currentDebt);
+        const toRatio = (cv: bigint, dv: bigint) =>
+          dv === 0n ? Infinity : Number(cv) / Number(dv);
 
-        let projectedHealth = currentHealth;
-        if (quote.projected) {
-          const projDebt = quote.projected.debtValue;
-          const projCollateral = quote.projected.collateralValue;
-          projectedHealth =
-            projDebt === 0n
-              ? Infinity
-              : Number(projCollateral) / Number(projDebt);
-        }
+        const currentHealth = toRatio(quote.current.collateralValue, quote.current.debtValue);
+        const projectedHealth = quote.projected
+          ? toRatio(quote.projected.collateralValue, quote.projected.debtValue)
+          : currentHealth;
 
-        setState({
-          currentHealth,
-          projectedHealth,
-          simulation: quote.simulation,
-          loading: false,
-          error: null,
-        });
+        setState({ currentHealth, projectedHealth, loading: false, error: null });
       } catch (e) {
-        setState((s) => ({
-          ...s,
-          loading: false,
-          error: e instanceof Error ? e : new Error(String(e)),
-        }));
+        if (isNoPosition(e)) {
+          // No position yet — projected health is Infinity (safe)
+          setState({ currentHealth: Infinity, projectedHealth: Infinity, loading: false, error: null });
+        } else {
+          setState((s) => ({
+            ...s,
+            loading: false,
+            error: e instanceof Error ? e : new Error(String(e)),
+          }));
+        }
       }
     }, 400);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [wallet, collateralToken, debtToken, action, amount]);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [wallet, collateralToken, debtToken, action, amount, poolAddress]);
 
   return state;
 }
