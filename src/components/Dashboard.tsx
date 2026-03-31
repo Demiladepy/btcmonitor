@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Bell, RefreshCw } from "lucide-react";
 import type { Token } from "starkzap";
 import { useActiveMarket } from "../hooks/useActiveMarket";
 import { useLendingPosition } from "../hooks/useLendingPosition";
@@ -71,8 +72,9 @@ export function Dashboard({ walletState }: Props) {
         </div>
         <AlertSettings threshold={threshold} setThreshold={setThreshold} />
         {notifications.isConfigured && (
-          <span className="pill pill-green" style={{ fontSize: 11, padding: "3px 10px" }}>
-            🔔 Alerts active
+          <span className="pill pill-orange" style={{ fontSize: 11, padding: "3px 10px", gap: 5 }}>
+            <Bell size={10} />
+            Alerts on
           </span>
         )}
         <button className="wallet-btn" onClick={walletState.disconnect} title="Disconnect">
@@ -128,7 +130,10 @@ export function Dashboard({ walletState }: Props) {
                     : "Danger"}
                 </span>
                 {position.loading && (
-                  <span className="badge"><span className="spinner-sm" />Refreshing</span>
+                  <span className="badge" style={{ gap: 5 }}>
+                    <RefreshCw size={10} style={{ animation: "spin 0.9s linear infinite" }} />
+                    Refreshing
+                  </span>
                 )}
               </div>
               <div style={{ fontSize: 12, color: "var(--muted)" }}>

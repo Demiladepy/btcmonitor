@@ -1,33 +1,37 @@
+import { Wallet, Zap, ShieldCheck, Bell, Activity } from "lucide-react";
 import type { WalletState } from "../hooks/useWallet";
 import { truncateAddress } from "../lib/tokens";
 
-interface Props {
-  walletState: WalletState;
-}
+interface Props { walletState: WalletState; }
+
+const features = [
+  { icon: Activity, label: "Live health ratio with 48-point history" },
+  { icon: Zap,      label: "Simulate borrow impact before signing" },
+  { icon: ShieldCheck, label: "Hard-blocked if action triggers liquidation" },
+  { icon: Bell,     label: "Telegram & email alerts at your threshold" },
+];
 
 export function WalletConnect({ walletState }: Props) {
   const { isConnected, isConnecting, connect, disconnect, address, error } = walletState;
 
-  // In-header badge when connected
   if (isConnected && address) {
     return (
       <button className="wallet-btn" onClick={disconnect}>
-        <div className="dot dot-green" />
+        <div className="dot dot-orange" />
         <span className="addr">{truncateAddress(address)}</span>
         <span style={{ color: "var(--muted)", fontSize: 11 }}>✕</span>
       </button>
     );
   }
 
-  // Connecting spinner
   if (isConnecting) {
     return (
       <div className="connect-screen">
         <div className="connect-card">
           <div className="connect-logo">₿</div>
           <div className="connect-title">BTC Health Monitor</div>
-          <div className="connect-subtitle">Connecting to Sepolia…</div>
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+          <div className="connect-subtitle" style={{ marginBottom: 24 }}>Connecting to Sepolia…</div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
             <div className="spinner" />
           </div>
         </div>
@@ -35,43 +39,59 @@ export function WalletConnect({ walletState }: Props) {
     );
   }
 
-  // Error with retry
   if (error) {
     return (
       <div className="connect-screen">
         <div className="connect-card">
           <div className="connect-logo">⚠️</div>
-          <div className="connect-title">Connection failed</div>
-          <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
+          <div className="connect-title">Connection Failed</div>
+          <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 28, lineHeight: 1.6 }}>
             {error.message.length > 140 ? error.message.slice(0, 140) + "…" : error.message}
           </div>
-          <button className="btn-primary btn-full" onClick={connect}>Retry</button>
+          <button className="connect-btn-primary" onClick={connect}>
+            <Wallet size={16} />
+            Retry
+          </button>
         </div>
       </div>
     );
   }
 
-  // Landing
   return (
     <div className="connect-screen">
       <div className="connect-card">
         <div className="connect-logo">₿</div>
+
         <div className="connect-title">BTC Health Monitor</div>
         <div className="connect-subtitle">
-          Monitor Vesu lending positions on Starknet.<br />
-          Simulate borrow &amp; repay before signing. Get alerts before liquidation.
+          DeFi risk management for Vesu lending on Starknet.<br />
+          Know your health. Act before liquidation.
+        </div>
+
+        {/* Feature list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32, textAlign: "left" }}>
+          {features.map(({ icon: Icon, label }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text2)" }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                background: "var(--accent-dim)", border: "1px solid rgba(247,147,26,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Icon size={13} color="var(--accent)" />
+              </div>
+              {label}
+            </div>
+          ))}
         </div>
 
         <button className="connect-btn-primary" onClick={connect}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          Connect Demo Wallet
+          <Wallet size={17} />
+          Launch Demo Wallet
         </button>
 
         <div className="connect-footer">
-          Starknet Sepolia testnet · Powered by Starkzap v2 + Vesu
+          <div className="dot dot-green" style={{ width: 6, height: 6 }} />
+          Starknet Sepolia · Starkzap v2 · Vesu Protocol
         </div>
       </div>
     </div>
