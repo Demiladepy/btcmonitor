@@ -38,6 +38,7 @@ export function BorrowSimulator({
   const [tab, setTab] = useState<Tab>("borrow");
   const [amount, setAmount] = useState("");
   const [pending, setPending] = useState(false);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   const quote = useQuoteHealth(wallet, collateralToken, debtToken, tab, amount, poolAddress);
   const { maxBorrow } = useMaxBorrow(wallet, collateralToken, debtToken, poolAddress);
@@ -46,7 +47,14 @@ export function BorrowSimulator({
   const projRatio = showProjected && !quote.loading ? quote.projectedHealth : undefined;
   const gaugeRatio = showProjected && !quote.loading ? quote.currentHealth : currentHealthRatio;
 
+  // Reset risk acknowledgement whenever amount changes
+  function onAmountChange(val: string) {
+    setAmount(val);
+    setRiskAcknowledged(false);
+  }
+
   function setMax() {
+    setRiskAcknowledged(false);
     if (maxBorrow > 0n) {
       // Use 95% of max to avoid edge failures
       const safeMax = (maxBorrow * 95n) / 100n;
@@ -86,7 +94,89 @@ export function BorrowSimulator({
     }
   }
 
-  const disabled = pending || !amount || parseFloat(amount) <= 0 || !poolAddress;
+  const baseDisabled = pending || !amount || parseFloat(amount) <= 0 || !poolAddress;
+
+  const proj = showProjected && !quote.loading ? quote.projectedHealth : null;
+  const isSafe      = proj === null || proj > 1.5;
+  const isWarning   = proj !== null && proj > 1.2 && proj <= 1.5;
+  const isDanger    = proj !== null && proj > 1.0 && proj <= 1.2;
+  const isLiquidation = proj !== null && proj <= 1.0;
+
+  function renderConfirmButton() {
+    if (pending) {
+      return (
+        <button className="btn-primary btn-full" disabled>
+          <span className="spinner-sm" />Confirming…
+        </button>
+      );
+    }
+
+    // Simulation in flight — block confirm
+    if (showProjected && quote.loading) {
+      return (
+        <button className="btn-primary btn-full" disabled>
+          Simulating impact…
+        </button>
+      );
+    }
+
+    // Would immediately liquidate — hard block
+    if (tab === "borrow" && isLiquidation) {
+      return (
+        <div style={{ background: "var(--red-dim)", border: "1px solid var(--red)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>
+            ⛔ Transaction blocked
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            Projected health {proj!.toFixed(3)}x — this borrow would trigger immediate liquidation.
+          </div>
+        </div>
+      );
+    }
+
+    // Danger zone — require explicit acknowledgement
+    if (tab === "borrow" && isDanger && !riskAcknowledged) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ background: "var(--red-dim)", border: "1px solid var(--red)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "var(--red)" }}>
+            ⚠️ Projected health {proj!.toFixed(3)}x — a 5% market move could trigger liquidation.
+          </div>
+          <button
+            className="btn-full"
+            onClick={() => setRiskAcknowledged(true)}
+            style={{ border: "1px solid var(--red)", color: "var(--red)", background: "transparent", borderRadius: 10, padding: "11px 0", cursor: "pointer", fontWeight: 600, fontSize: 13 }}
+          >
+            I understand the risk — confirm anyway →
+          </button>
+        </div>
+      );
+    }
+
+    // Warning zone — show amber notice above normal confirm
+    const label = tab === "borrow"
+      ? `Borrow ${amount} ${debtToken.symbol}`
+      : `Repay ${amount} ${debtToken.symbol}`;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {tab === "borrow" && isWarning && (
+          <div style={{ background: "#f59e0b18", border: "1px solid #f59e0b44", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#f59e0b" }}>
+            ⚠️ Projected health {proj!.toFixed(3)}x — approaching risk zone. Consider a smaller amount.
+          </div>
+        )}
+        <button
+          className="btn-primary btn-full"
+          onClick={handleAction}
+          disabled={baseDisabled}
+          style={isSafe && proj !== null ? { background: "var(--green)" } : undefined}
+        >
+          {isSafe && proj !== null
+            ? <>{label} <span style={{ opacity: 0.75, fontSize: 11, marginLeft: 6 }}>Health after: {proj.toFixed(3)}x ✓</span></>
+            : label}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="card sim-card">
@@ -113,7 +203,7 @@ export function BorrowSimulator({
             <input
               type="number" className="amount-input"
               min="0" step="0.01" value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => onAmountChange(e.target.value)}
               placeholder="0.00"
             />
             <div className="amount-token">{debtToken.symbol}</div>
@@ -142,13 +232,7 @@ export function BorrowSimulator({
           </div>
         )}
 
-        <button className="btn-primary btn-full" onClick={handleAction} disabled={disabled}>
-          {pending
-            ? <><span className="spinner-sm" />Confirming…</>
-            : tab === "borrow"
-              ? `Borrow ${amount || "0"} ${debtToken.symbol}`
-              : `Repay ${amount || "0"} ${debtToken.symbol}`}
-        </button>
+        {renderConfirmButton()}
 
         {tab === "borrow" && (
           <div style={{ textAlign: "center", fontSize: 11, color: "var(--muted)" }}>
