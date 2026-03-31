@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import TelegramBot from "node-telegram-bot-api";
 import type { AlertEvent } from "../src/lib/notificationTypes";
 
 const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
@@ -73,11 +72,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   rateLimitMap.set(key, Date.now());
 
   try {
-    const bot = new TelegramBot(token);
-    await bot.sendMessage(chatId, formatMessage(event), {
-      parse_mode: "MarkdownV2",
-      disable_web_page_preview: false,
-    } as Parameters<typeof bot.sendMessage>[2]);
+    const response = await fetch(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: formatMessage(event),
+          parse_mode: "MarkdownV2",
+          disable_web_page_preview: false,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("Telegram API error:", err);
+      return res.status(500).json({ error: "Telegram API error" });
+    }
 
     return res.status(200).json({ ok: true });
   } catch (e) {
