@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { StarkSigner, ArgentPreset } from "starkzap";
 import type { Wallet } from "starkzap";
 import { sdk } from "../lib/sdk";
@@ -13,6 +13,10 @@ function getOrCreateSessionKey(): string {
     localStorage.setItem(KEY_STORAGE, key);
   }
   return key;
+}
+
+function clearSessionKey() {
+  localStorage.removeItem(KEY_STORAGE);
 }
 
 export interface WalletState {
@@ -50,18 +54,10 @@ export function useWallet(): WalletState {
     }
   }, []);
 
-  // Auto-connect if a key already exists in storage (returning user)
-  useEffect(() => {
-    if (localStorage.getItem(KEY_STORAGE)) {
-      connect();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const disconnect = useCallback(() => {
     setWallet(null);
     setError(null);
-    localStorage.removeItem(KEY_STORAGE);
+    clearSessionKey();
   }, []);
 
   return {
