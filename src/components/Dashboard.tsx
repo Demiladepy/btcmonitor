@@ -6,6 +6,8 @@ import { useAlerts } from "../hooks/useAlerts";
 import { useHealthHistory } from "../hooks/useHealthHistory";
 import { useMaxBorrow } from "../hooks/useMaxBorrow";
 import { useToast } from "../hooks/useToast";
+import { useNotifications } from "../hooks/useNotifications";
+import { useYieldAlert } from "../hooks/useYieldAlert";
 import { HealthGauge } from "./HealthGauge";
 import { PositionCard } from "./PositionCard";
 import { BorrowSimulator } from "./BorrowSimulator";
@@ -16,6 +18,7 @@ import { MarketPanel } from "./MarketPanel";
 import { HealthHistoryChart } from "./HealthHistoryChart";
 import { StatsBar } from "./StatsBar";
 import { ToastContainer } from "./Toast";
+import { NotificationSetup } from "./NotificationSetup";
 import type { WalletState } from "../hooks/useWallet";
 import { COLLATERAL_TOKEN, DEBT_TOKEN, truncateAddress } from "../lib/tokens";
 
@@ -33,7 +36,12 @@ export function Dashboard({ walletState }: Props) {
   );
   const position = useLendingPosition(wallet, collateralToken, debtToken, poolAddress);
   const { maxBorrow } = useMaxBorrow(wallet, collateralToken, debtToken, poolAddress);
-  const { alertActive, threshold, setThreshold, dismissAlert } = useAlerts(position.healthRatio);
+  const notifications = useNotifications();
+  const { alertActive, threshold, setThreshold, dismissAlert } = useAlerts(
+    position.healthRatio,
+    notifications.sendAlert
+  );
+  useYieldAlert(position.debtAmount, notifications.sendAlert);
   const { history } = useHealthHistory(position.healthRatio);
 
   if (!wallet) return null;
@@ -62,6 +70,11 @@ export function Dashboard({ walletState }: Props) {
           Sepolia
         </div>
         <AlertSettings threshold={threshold} setThreshold={setThreshold} />
+        {notifications.isConfigured && (
+          <span className="pill pill-green" style={{ fontSize: 11, padding: "3px 10px" }}>
+            🔔 Alerts active
+          </span>
+        )}
         <button className="wallet-btn" onClick={walletState.disconnect} title="Disconnect">
           <div className="dot dot-green" />
           <span className="addr">{address ? truncateAddress(address) : "…"}</span>
@@ -168,6 +181,7 @@ export function Dashboard({ walletState }: Props) {
                 onComplete={position.refresh}
                 toast={toast}
               />
+              <NotificationSetup hook={notifications} />
             </>
           )}
         </div>

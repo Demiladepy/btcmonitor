@@ -403,6 +403,19 @@ button { cursor: pointer; border: none; font-family: inherit; font-size: 14px; t
   transition: border-color 0.15s;
 }
 .amount-wrap:focus-within { border-color: var(--green); }
+.input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--muted); }
 .amount-input {
   flex: 1; background: transparent;
   padding: 12px 14px; color: var(--text);
