@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/node";
+import { getPrivyClient } from "@/lib/privy-server";
 
-const privy = new PrivyClient({
-  appId: process.env.PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
-});
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "walletId and hash required" }, { status: 400 });
     }
 
+    const privy = getPrivyClient();
     const result = await privy.wallets().rawSign(walletId, {
       params: { hash },
     });
