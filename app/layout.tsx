@@ -1,6 +1,13 @@
 import "./globals.css";
+import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { WalletProvider } from "@/lib/wallet-context";
+
+export const metadata: Metadata = {
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],

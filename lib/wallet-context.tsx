@@ -45,8 +45,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
-            if (!res.ok) throw new Error("Failed to create wallet");
-            const data = await res.json();
+            const data = (await res.json().catch(() => ({}))) as {
+              error?: string;
+              wallet?: { id: string; publicKey: string };
+            };
+            if (!res.ok) {
+              throw new Error(
+                data.error || `Wallet API failed (${res.status}). Check server logs and PRIVY_APP_ID / PRIVY_APP_SECRET.`,
+              );
+            }
+            if (!data.wallet?.id || !data.wallet?.publicKey) {
+              throw new Error("Wallet API returned an invalid payload (missing id or publicKey).");
+            }
             return {
               walletId: data.wallet.id,
               publicKey: data.wallet.publicKey,
