@@ -2,9 +2,9 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useWallet } from "./hooks/useWallet";
 import { WalletConnect } from "./components/WalletConnect";
 import { Dashboard } from "./components/Dashboard";
-import { TransactPage } from "./pages/TransactPage";
-import { AlertsPage } from "./pages/AlertsPage";
-import { PositionDetailPage } from "./pages/PositionDetailPage";
+import { TransactPage } from "./legacy-pages/TransactPage";
+import { AlertsPage } from "./legacy-pages/AlertsPage";
+import { PositionDetailPage } from "./legacy-pages/PositionDetailPage";
 import "./index.css";
 
 function App() {

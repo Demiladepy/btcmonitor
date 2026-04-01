@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/paymaster/route": "app/api/paymaster/route.js",
+  "/api/wallet/starknet/route": "app/api/wallet/starknet/route.js",
+  "/api/wallet/sign/route": "app/api/wallet/sign/route.js",
+  "/dashboard/transact/page": "app/dashboard/transact/page.js",
+  "/dashboard/alerts/page": "app/dashboard/alerts/page.js",
+  "/page": "app/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
+}

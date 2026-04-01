@@ -1,0 +1,77 @@
+{
+  "node_modules\\starkzap\\dist\\src\\bridge\\operator\\BridgeOperator.js -> ../../bridge/ethereum/canonical/CanonicalEthereumBridge.js": {
+    "id": 4689,
+    "files": [
+      "static/chunks/209.cc0ce44a057bf805.js",
+      "static/chunks/403.9aaa95650fdf2d0e.js",
+      "static/chunks/689.113c2434bc675897.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\operator\\BridgeOperator.js -> ../../bridge/ethereum/cctp/CCTPBridge.js": {
+    "id": 1409,
+    "files": [
+      "static/chunks/209.cc0ce44a057bf805.js",
+      "static/chunks/403.9aaa95650fdf2d0e.js",
+      "static/chunks/444.0cae02f2f245526e.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\operator\\BridgeOperator.js -> ../../bridge/ethereum/lords/LordsBridge.js": {
+    "id": 9422,
+    "files": [
+      "static/chunks/209.cc0ce44a057bf805.js",
+      "static/chunks/403.9aaa95650fdf2d0e.js",
+      "static/chunks/422.476b7489bb45288e.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\operator\\BridgeOperator.js -> ../../bridge/ethereum/oft/OftBridge.js": {
+    "id": 2144,
+    "files": [
+      "static/chunks/209.cc0ce44a057bf805.js",
+      "static/chunks/403.9aaa95650fdf2d0e.js",
+      "static/chunks/144.5ab26289179f1d28.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\operator\\BridgeOperator.js -> ../../bridge/solana/SolanaHyperlaneBridge.js": {
+    "id": 5292,
+    "files": [
+      "static/chunks/292.5ceddfd91f648a21.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\solana\\hyperlaneRuntime.js -> @hyperlane-xyz/registry": {
+    "id": 7634,
+    "files": []
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\solana\\hyperlaneRuntime.js -> @hyperlane-xyz/sdk": {
+    "id": 7634,
+    "files": []
+  },
+  "node_modules\\starkzap\\dist\\src\\bridge\\solana\\hyperlaneRuntime.js -> @hyperlane-xyz/utils": {
+    "id": 7634,
+    "files": []
+  },
+  "node_modules\\starkzap\\dist\\src\\connect\\ethersRuntime.js -> ethers": {
+    "id": 4920,
+    "files": [
+      "static/chunks/209.cc0ce44a057bf805.js",
+      "static/chunks/920.24d888ddee3599ea.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\connect\\solanaWeb3Runtime.js -> @solana/web3.js": {
+    "id": 4024,
+    "files": [
+      "static/chunks/3a91511d.3b6ef8de8956d9bf.js",
+      "static/chunks/729.44b39dba64068ab0.js",
+      "static/chunks/601.6dac09bcbef5036f.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\sdk.js -> ./wallet/cartridge.js": {
+    "id": 5502,
+    "files": [
+      "static/chunks/646.64312702bc5f3eb6.js"
+    ]
+  },
+  "node_modules\\starkzap\\dist\\src\\wallet\\cartridge.js -> @cartridge/controller": {
+    "id": 7634,
+    "files": []
+  }
+}
