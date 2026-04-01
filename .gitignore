@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Next.js (never commit build output — Vercel builds from source)
+.next/
+out/
+.vercel
 *.local
 
 # Environment variables (contains secrets)
