@@ -10,6 +10,7 @@ import { useMaxBorrow } from "../hooks/useMaxBorrow";
 import { useToast } from "../hooks/useToast";
 import { useNotifications } from "../hooks/useNotifications";
 import { useYieldAlert } from "../hooks/useYieldAlert";
+import { Logo } from "./Logo";
 import { HealthGauge } from "./HealthGauge";
 import { PositionCard } from "./PositionCard";
 import { BorrowSimulator } from "./BorrowSimulator";
@@ -63,7 +64,7 @@ export function Dashboard({ walletState }: Props) {
       {/* ── Header ── */}
       <header className="header">
         <div className="header-logo">
-          <div className="header-logo-icon">₿</div>
+          <Logo size={28} />
           <span className="logo-text">BTC Health Monitor</span>
         </div>
         <div className="header-spacer" />

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { Logo } from "../components/Logo";
 import { useLendingPosition } from "../hooks/useLendingPosition";
 import { useActiveMarket } from "../hooks/useActiveMarket";
 import { useAlerts } from "../hooks/useAlerts";
@@ -39,7 +40,7 @@ export function AlertsPage({ walletState }: Props) {
 
       <header className="header">
         <div className="header-logo">
-          <div className="header-logo-icon">₿</div>
+          <Logo size={28} />
           <span className="logo-text">BTC Health Monitor</span>
         </div>
         <div className="header-spacer" />

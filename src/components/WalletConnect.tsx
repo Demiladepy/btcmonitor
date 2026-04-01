@@ -1,6 +1,7 @@
 import { Wallet, Zap, ShieldCheck, Bell, Activity } from "lucide-react";
 import type { WalletState } from "../hooks/useWallet";
 import { truncateAddress } from "../lib/tokens";
+import { Logo } from "./Logo";
 
 interface Props { walletState: WalletState; }
 
@@ -28,7 +29,7 @@ export function WalletConnect({ walletState }: Props) {
     return (
       <div className="connect-screen">
         <div className="connect-card">
-          <div className="connect-logo">₿</div>
+          <div className="connect-logo"><Logo size={52} /></div>
           <div className="connect-title">BTC Health Monitor</div>
           <div className="connect-subtitle" style={{ marginBottom: 24 }}>Connecting to Sepolia…</div>
           <div style={{ display: "flex", justifyContent: "center" }}>
@@ -43,7 +44,7 @@ export function WalletConnect({ walletState }: Props) {
     return (
       <div className="connect-screen">
         <div className="connect-card">
-          <div className="connect-logo">⚠️</div>
+          <div className="connect-logo" style={{ fontSize: 40 }}>⚠️</div>
           <div className="connect-title">Connection Failed</div>
           <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 28, lineHeight: 1.6 }}>
             {error.message.length > 140 ? error.message.slice(0, 140) + "…" : error.message}
@@ -60,7 +61,7 @@ export function WalletConnect({ walletState }: Props) {
   return (
     <div className="connect-screen">
       <div className="connect-card">
-        <div className="connect-logo">₿</div>
+        <div className="connect-logo"><Logo size={52} /></div>
 
         <div className="connect-title">BTC Health Monitor</div>
         <div className="connect-subtitle">
