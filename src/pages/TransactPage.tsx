@@ -7,6 +7,7 @@ import { useLendingPosition } from "../hooks/useLendingPosition";
 import { useToast } from "../hooks/useToast";
 import { BorrowSimulator } from "../components/BorrowSimulator";
 import { DepositWithdrawPanel } from "../components/DepositWithdrawPanel";
+import { SendPanel } from "../components/SendPanel";
 import { ToastContainer } from "../components/Toast";
 import type { WalletState } from "../hooks/useWallet";
 import { COLLATERAL_TOKEN, DEBT_TOKEN } from "../lib/tokens";
@@ -76,6 +77,7 @@ export function TransactPage({ walletState }: Props) {
               onComplete={position.refresh}
               toast={toast}
             />
+            <SendPanel wallet={wallet} toast={toast} />
           </>
         )}
       </div>
