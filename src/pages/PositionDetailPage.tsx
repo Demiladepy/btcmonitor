@@ -112,7 +112,7 @@ export function PositionDetailPage({ walletState }: Props) {
           position={position}
         />
 
-        <HealthHistoryChart history={history} />
+        <HealthHistoryChart history={history} alertThreshold={1.2} />
 
         <div style={{ display: "flex", gap: 12 }}>
           <Link to="/dashboard/transact" style={{
