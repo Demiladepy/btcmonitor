@@ -46,7 +46,7 @@ export function TransactContent() {
           },
         },
         health: { collateralToken: tokens[collateral], debtToken: tokens[debt] },
-        feeMode: "sponsored",
+        feeMode: "user_pays",
       });
       setSimulation({
         current: quote.current,
@@ -73,14 +73,14 @@ export function TransactContent() {
           tx = await wallet.transfer(
             tokens[tokenSymbol],
             [{ to: fromAddress(recipient), amount: Amount.parse(amount, tokens[tokenSymbol]) }],
-            { feeMode: "sponsored" },
+            { feeMode: "user_pays" },
           );
           break;
 
         case "deposit":
           tx = await wallet.lending().deposit(
             { token: tokens[tokenSymbol], amount: Amount.parse(amount, tokens[tokenSymbol]) },
-            { feeMode: "sponsored" },
+            { feeMode: "user_pays" },
           );
           break;
 
@@ -91,7 +91,7 @@ export function TransactContent() {
               debtToken: tokens[debt],
               amount: Amount.parse(amount, tokens[debt]),
             },
-            { feeMode: "sponsored" },
+            { feeMode: "user_pays" },
           );
           break;
 
@@ -102,7 +102,7 @@ export function TransactContent() {
               debtToken: tokens[debt],
               amount: Amount.parse(amount, tokens[debt]),
             },
-            { feeMode: "sponsored" },
+            { feeMode: "user_pays" },
           );
           break;
       }

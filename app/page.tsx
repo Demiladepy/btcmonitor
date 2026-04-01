@@ -48,7 +48,7 @@ export default function LandingPage() {
 
         {error && <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg">{error}</p>}
 
-        <p className="text-sm text-gray-400 pt-6">Gasless transactions · Starknet Sepolia · Vesu Protocol</p>
+        <p className="text-sm text-gray-400 pt-6">Network fees paid from your wallet · Starknet Sepolia · Vesu</p>
       </div>
     </main>
   );

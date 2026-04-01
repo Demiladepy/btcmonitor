@@ -1,13 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
-import {
-  StarkZap,
-  OnboardStrategy,
-  accountPresets,
-  AvnuSwapProvider,
-  type WalletInterface,
-} from "starkzap";
+import { StarkZap, OnboardStrategy, accountPresets, type WalletInterface } from "starkzap";
 
 interface WalletState {
   wallet: WalletInterface | null;
@@ -33,13 +27,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (!sdkRef.current) {
-        // Route paymaster via our API so AVNU never sees a bad client key; optional AVNU_API_KEY is server-only.
-        sdkRef.current = new StarkZap({
-          network: "sepolia",
-          paymaster: {
-            nodeUrl: `${window.location.origin}/api/paymaster`,
-          },
-        });
+        sdkRef.current = new StarkZap({ network: "sepolia" });
       }
       const sdk = sdkRef.current;
 
@@ -72,11 +60,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         },
         accountPreset: accountPresets.argentXV050,
         deploy: "if_needed",
-        feeMode: "sponsored",
+        feeMode: "user_pays",
       });
-
-      w.registerSwapProvider(new AvnuSwapProvider());
-      w.setDefaultSwapProvider("avnu");
 
       setWallet(w);
       setAddress(w.address.toString());
