@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Bell, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Bell, RefreshCw, ArrowLeftRight } from "lucide-react";
 import type { Token } from "starkzap";
 import { useActiveMarket } from "../hooks/useActiveMarket";
 import { useLendingPosition } from "../hooks/useLendingPosition";
@@ -77,6 +78,14 @@ export function Dashboard({ walletState }: Props) {
             Alerts on
           </span>
         )}
+        <Link to="/dashboard/transact" className="header-nav-btn">
+          <ArrowLeftRight size={13} />
+          Transact
+        </Link>
+        <Link to="/dashboard/alerts" className="header-nav-btn">
+          <Bell size={13} />
+          Alerts
+        </Link>
         <button className="wallet-btn" onClick={walletState.disconnect} title="Disconnect">
           <div className="dot dot-green" />
           <span className="addr">{address ? truncateAddress(address) : "…"}</span>

@@ -391,6 +391,15 @@ button { cursor: pointer; border: none; font-family: inherit; font-size: 14px; t
 .wallet-btn:hover { border-color: var(--accent); }
 .wallet-btn .addr { font-family: var(--mono); color: var(--accent); font-size: 12px; }
 
+.header-nav-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text2); font-size: 12px; font-weight: 500;
+  text-decoration: none; cursor: pointer; transition: all 0.15s;
+}
+.header-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 /* Main body */
 .dash-body {
   flex: 1;
