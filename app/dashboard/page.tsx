@@ -1,15 +1,11 @@
 "use client";
 
 import { useWallet } from "@/lib/wallet-context";
+import { chainDisplayLabel } from "@/lib/chain-label";
+import { getDashboardBalanceSymbols, getVesuPositionPairs } from "@/lib/dashboard-config";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { getPresets } from "starkzap";
-
-const PAIRS = [
-  { collateral: "ETH", debt: "USDC" },
-  { collateral: "WBTC", debt: "USDC" },
-  { collateral: "ETH", debt: "USDT" },
-];
 
 interface Position {
   collateral: string;
@@ -32,6 +28,7 @@ function usdFromScale(value: bigint): string {
 export default function Dashboard() {
   const { wallet, address, disconnect } = useWallet();
   const router = useRouter();
+  const balanceSymbols = useMemo(() => getDashboardBalanceSymbols(), []);
   const [positions, setPositions] = useState<Position[]>([]);
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState(true);
@@ -45,9 +42,8 @@ export default function Dashboard() {
     setLoadingBalances(true);
     try {
       const tokens = getPresets(wallet.getChainId());
-      const symbols = ["ETH", "STRK", "USDC", "WBTC"];
       const results: Record<string, string> = {};
-      for (const sym of symbols) {
+      for (const sym of balanceSymbols) {
         const token = tokens[sym];
         if (token) {
           try {
@@ -62,13 +58,14 @@ export default function Dashboard() {
     } finally {
       setLoadingBalances(false);
     }
-  }, [wallet]);
+  }, [wallet, balanceSymbols]);
 
   const fetchPositions = useCallback(async () => {
     if (!wallet) return;
     const tokens = getPresets(wallet.getChainId());
+    const positionPairs = getVesuPositionPairs();
 
-    const results: Position[] = PAIRS.map((p) => ({
+    const results: Position[] = positionPairs.map((p) => ({
       collateral: p.collateral,
       debt: p.debt,
       collateralValue: "—",
@@ -81,8 +78,8 @@ export default function Dashboard() {
     }));
     setPositions([...results]);
 
-    for (let i = 0; i < PAIRS.length; i++) {
-      const pair = PAIRS[i];
+    for (let i = 0; i < positionPairs.length; i++) {
+      const pair = positionPairs[i];
       const collateralToken = tokens[pair.collateral];
       const debtToken = tokens[pair.debt];
 
@@ -152,7 +149,9 @@ export default function Dashboard() {
           BTC Health <span className="text-amber-500">Monitor</span>
         </h1>
         <div className="flex items-center gap-4 flex-wrap justify-end">
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Sepolia</span>
+          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+            {chainDisplayLabel(wallet.getChainId())}
+          </span>
           <button
             type="button"
             onClick={() => router.push("/dashboard/transact")}
@@ -181,7 +180,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold mb-4">Wallet Balances</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {loadingBalances
-              ? Array.from({ length: 4 }).map((_, i) => (
+              ? Array.from({ length: Math.max(1, balanceSymbols.length) }).map((_, i) => (
                   <div key={i} className="bg-gray-50 rounded-xl p-4 animate-pulse h-20 border border-gray-100" />
                 ))
               : Object.entries(balances).map(([sym, val]) => (

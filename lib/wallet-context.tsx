@@ -4,6 +4,9 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { StarkZap, OnboardStrategy, accountPresets, ChainId, type WalletInterface } from "starkzap";
 
 const PENDING_STORAGE_KEY = "btchealth_pending_starknet_wallet";
+/** Persists Privy wallet credentials so we do not POST a new wallet on every visit. */
+const PRIVY_STORAGE_KEY = "btchealth_privy_wallet_v1";
+const DEPLOYED_STORAGE_KEY = "btchealth_starknet_deployed_v1";
 
 export interface PendingWallet {
   walletId: string;
@@ -46,6 +49,36 @@ function writePendingToStorage(p: PendingWallet | null) {
   else sessionStorage.removeItem(PENDING_STORAGE_KEY);
 }
 
+function readPrivyFromStorage(): PendingWallet | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PRIVY_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PendingWallet;
+    if (p?.walletId && p?.publicKey && p?.address) return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writePrivyToStorage(p: PendingWallet | null) {
+  if (typeof window === "undefined") return;
+  if (p) localStorage.setItem(PRIVY_STORAGE_KEY, JSON.stringify(p));
+  else localStorage.removeItem(PRIVY_STORAGE_KEY);
+}
+
+function readDeployedAddressFromStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(DEPLOYED_STORAGE_KEY);
+}
+
+function writeDeployedAddress(address: string | null) {
+  if (typeof window === "undefined") return;
+  if (address) localStorage.setItem(DEPLOYED_STORAGE_KEY, address);
+  else localStorage.removeItem(DEPLOYED_STORAGE_KEY);
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [wallet, setWallet] = useState<WalletInterface | null>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -64,41 +97,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (restored) setPendingWallet(restored);
   }, []);
 
-  const prepareWallet = useCallback(async () => {
-    setIsConnecting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/wallet/starknet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        wallet?: { id: string; publicKey: string; address: string };
-      };
-      if (!res.ok) {
-        throw new Error(
-          data.error || `Wallet API failed (${res.status}). Check server logs and PRIVY_APP_ID / PRIVY_APP_SECRET.`,
-        );
-      }
-      if (!data.wallet?.id || !data.wallet?.publicKey || !data.wallet?.address) {
-        throw new Error("Wallet API returned an invalid payload.");
-      }
-      const p: PendingWallet = {
-        walletId: data.wallet.id,
-        publicKey: data.wallet.publicKey,
-        address: data.wallet.address,
-      };
-      setPendingWallet(p);
-      writePendingToStorage(p);
-    } catch (err: unknown) {
-      console.error("Prepare wallet failed:", err);
-      setError(err instanceof Error ? err.message : "Failed to create wallet");
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
-
   const continueAfterFunding = useCallback(async () => {
     const p = pendingRef.current;
     if (!p) {
@@ -111,9 +109,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (!sdkRef.current) {
-        // Blast public RPC — more reliable than Cartridge default on Sepolia
+        // Same-origin API route proxies to upstream RPC (browser cannot call most public RPCs — CORS).
         sdkRef.current = new StarkZap({
-          rpcUrl: "https://starknet-sepolia.public.blastapi.io/rpc/v0_7",
+          rpcUrl: `${window.location.origin}/api/starknet-rpc`,
           chainId: ChainId.SEPOLIA,
         });
       }
@@ -137,6 +135,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAddress(w.address.toString());
       setPendingWallet(null);
       writePendingToStorage(null);
+      writeDeployedAddress(p.address);
     } catch (err: unknown) {
       console.error("Connect failed:", err);
       const message = err instanceof Error ? err.message : "Connection failed";
@@ -146,11 +145,61 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const prepareWallet = useCallback(async () => {
+    setIsConnecting(true);
+    setError(null);
+    try {
+      const cached = readPrivyFromStorage();
+      if (cached) {
+        pendingRef.current = cached;
+        setPendingWallet(cached);
+        writePendingToStorage(cached);
+        if (readDeployedAddressFromStorage() === cached.address) {
+          await continueAfterFunding();
+        }
+        return;
+      }
+
+      const res = await fetch("/api/wallet/starknet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        wallet?: { id: string; publicKey: string; address: string };
+      };
+      if (!res.ok) {
+        throw new Error(
+          data.error || `Wallet API failed (${res.status}). Check server logs and PRIVY_APP_ID / PRIVY_APP_SECRET.`,
+        );
+      }
+      if (!data.wallet?.id || !data.wallet?.publicKey || !data.wallet?.address) {
+        throw new Error("Wallet API returned an invalid payload.");
+      }
+      const p: PendingWallet = {
+        walletId: data.wallet.id,
+        publicKey: data.wallet.publicKey,
+        address: data.wallet.address,
+      };
+      writePrivyToStorage(p);
+      pendingRef.current = p;
+      setPendingWallet(p);
+      writePendingToStorage(p);
+    } catch (err: unknown) {
+      console.error("Prepare wallet failed:", err);
+      setError(err instanceof Error ? err.message : "Failed to create wallet");
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [continueAfterFunding]);
+
   const disconnect = useCallback(() => {
     setWallet(null);
     setAddress(null);
     setPendingWallet(null);
     writePendingToStorage(null);
+    writePrivyToStorage(null);
+    writeDeployedAddress(null);
     sdkRef.current = null;
   }, []);
 
