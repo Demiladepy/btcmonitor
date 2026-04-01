@@ -11,6 +11,7 @@
   "dependencies": {
     "@prisma/client": "latest",
     "@privy-io/node": "latest",
+    "@solana/web3.js": "^1.98.4",
     "next": "^14.2.0",
     "node-telegram-bot-api": "latest",
     "react": "^18.3.0",
