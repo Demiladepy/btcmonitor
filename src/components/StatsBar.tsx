@@ -1,5 +1,6 @@
 import { formatUSD, formatTokenAmount } from "../lib/tokens";
 import type { LendingPositionState } from "../hooks/useLendingPosition";
+import { useArtemisData } from "../hooks/useArtemisData";
 import type { Token } from "starkzap";
 
 interface Props {
@@ -26,6 +27,7 @@ function healthColor(r: number) {
 }
 
 export function StatsBar({ position, collateralToken, debtToken, maxBorrow }: Props) {
+  const { btcPrice, vesuTvl } = useArtemisData();
   const hasPosition = position.collateralAmount > 0n || position.debtAmount > 0n;
 
   const ltv = position.collateralValue > 0n
@@ -40,8 +42,27 @@ export function StatsBar({ position, collateralToken, debtToken, maxBorrow }: Pr
     ? formatTokenAmount(maxBorrow, debtToken.decimals, 2) + " " + debtToken.symbol
     : "—";
 
+  const btcStr = btcPrice != null
+    ? "$" + btcPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })
+    : null;
+  const tvlStr = vesuTvl != null
+    ? "$" + (vesuTvl / 1_000_000).toFixed(1) + "M"
+    : null;
+
   return (
     <div className="stats-bar">
+      {btcStr && (
+        <>
+          <StatItem label="BTC Price" value={<span style={{ color: "var(--accent)" }}>{btcStr}</span>} />
+          <div className="stat-divider" />
+        </>
+      )}
+      {tvlStr && (
+        <>
+          <StatItem label="Vesu TVL" value={tvlStr} />
+          <div className="stat-divider" />
+        </>
+      )}
       <StatItem
         label="Health Ratio"
         value={
