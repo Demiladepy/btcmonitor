@@ -29,7 +29,9 @@ function isNoPosition(e: unknown): boolean {
     s.includes("pool-not-found") ||
     s.includes("position-not-found") ||
     s.includes("not found") ||
-    s.includes("nonexistent")
+    s.includes("nonexistent") ||
+    s.includes("contract error") ||    // catches starknet_call revert errors
+    s.includes("revert_error")
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
-import { StarkZap, OnboardStrategy, accountPresets, type WalletInterface } from "starkzap";
+import { StarkZap, OnboardStrategy, accountPresets, ChainId, type WalletInterface } from "starkzap";
 
 const PENDING_STORAGE_KEY = "btchealth_pending_starknet_wallet";
 
@@ -111,7 +111,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (!sdkRef.current) {
-        sdkRef.current = new StarkZap({ network: "sepolia" });
+        // Blast public RPC — more reliable than Cartridge default on Sepolia
+        sdkRef.current = new StarkZap({
+          rpcUrl: "https://starknet-sepolia.public.blastapi.io/rpc/v0_7",
+          chainId: ChainId.SEPOLIA,
+        });
       }
       const sdk = sdkRef.current;
 

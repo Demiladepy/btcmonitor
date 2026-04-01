@@ -86,22 +86,16 @@ export default function Dashboard() {
       const collateralToken = tokens[pair.collateral];
       const debtToken = tokens[pair.debt];
 
+      // Token doesn't exist on this network — silently skip it
       if (!collateralToken || !debtToken) {
-        results[i] = { ...results[i], loading: false, error: "Token not found on this network" };
+        results[i] = { ...results[i], loading: false };
         setPositions([...results]);
         continue;
       }
 
       try {
-        await wallet.lending().getPosition({
-          collateralToken,
-          debtToken,
-        });
-
-        const health = await wallet.lending().getHealth({
-          collateralToken,
-          debtToken,
-        });
+        await wallet.lending().getPosition({ collateralToken, debtToken });
+        const health = await wallet.lending().getHealth({ collateralToken, debtToken });
 
         const colVal = health.collateralValue;
         const dbtVal = health.debtValue;
@@ -117,8 +111,23 @@ export default function Dashboard() {
           loading: false,
         };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to load";
-        results[i] = { ...results[i], loading: false, error: message };
+        const msg = String(err).toLowerCase();
+        const isNoPos =
+          msg.includes("asset-config-nonexistent") ||
+          msg.includes("pool-not-found") ||
+          msg.includes("nonexistent") ||
+          msg.includes("not found") ||
+          msg.includes("revert_error");
+        if (isNoPos) {
+          // Pair doesn't exist in this Vesu pool — show as "no position", not error
+          results[i] = { ...results[i], loading: false };
+        } else {
+          results[i] = {
+            ...results[i],
+            loading: false,
+            error: err instanceof Error ? err.message : "Failed to load",
+          };
+        }
       }
       setPositions([...results]);
     }
@@ -199,7 +208,7 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {positions.map((pos, i) => (
+            {positions.filter((pos) => !pos.error || pos.hasDebt).map((pos, i) => (
               <div key={i} className="border border-gray-200 rounded-2xl p-6 space-y-4 bg-white">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold">

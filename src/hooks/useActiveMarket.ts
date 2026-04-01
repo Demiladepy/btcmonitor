@@ -31,7 +31,16 @@ export function useActiveMarket(
 
   useEffect(() => {
     if (!wallet) return;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    // Reset poolAddress immediately so useLendingPosition doesn't query
+    // the OLD pool with the NEW tokens while discovery is in flight.
+    setState({
+      collateralMarket: null,
+      debtMarket: null,
+      poolAddress: null,
+      allMarkets: [],
+      loading: true,
+      error: null,
+    });
 
     wallet
       .lending()
