@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 const AVNU_PAYMASTER_URL =
   process.env.AVNU_PAYMASTER_URL || "https://sepolia.paymaster.avnu.fi/v1";
-const AVNU_API_KEY = process.env.AVNU_API_KEY;
+/** Only forward if non-empty after trim — whitespace-only env values caused "invalid" key errors. */
+const AVNU_API_KEY = process.env.AVNU_API_KEY?.trim();
 
 export async function POST(req: Request) {
   try {
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(AVNU_API_KEY && { "x-paymaster-api-key": AVNU_API_KEY }),
+        ...(AVNU_API_KEY ? { "x-paymaster-api-key": AVNU_API_KEY } : {}),
       },
       body: JSON.stringify(body),
     });

@@ -33,7 +33,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (!sdkRef.current) {
-        sdkRef.current = new StarkZap({ network: "sepolia" });
+        // Route paymaster via our API so AVNU never sees a bad client key; optional AVNU_API_KEY is server-only.
+        sdkRef.current = new StarkZap({
+          network: "sepolia",
+          paymaster: {
+            nodeUrl: `${window.location.origin}/api/paymaster`,
+          },
+        });
       }
       const sdk = sdkRef.current;
 
