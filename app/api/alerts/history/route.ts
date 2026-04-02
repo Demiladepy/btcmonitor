@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { type Alert } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureUserDefaults, getWalletIdFromRequestHeaders } from "@/lib/alerts-server";
 
@@ -17,7 +16,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json({
-      alerts: alerts.map((a: Alert) => ({
+      alerts: alerts.map((a) => ({
         id: a.id,
         createdAt: a.createdAt.toISOString(),
         position: `${a.collateralSymbol}/${a.debtSymbol}`,
