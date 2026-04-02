@@ -3,9 +3,9 @@
 import { useWallet } from "@/lib/wallet-context";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
-import { getPresets, Amount, fromAddress } from "starkzap";
+import { getPresets, Amount, fromAddress, type SwapQuote } from "starkzap";
 
-type Action = "send" | "deposit" | "borrow" | "repay";
+type Action = "send" | "swap" | "deposit" | "borrow" | "repay";
 
 export function TransactContent() {
   const { wallet } = useWallet();
@@ -16,19 +16,61 @@ export function TransactContent() {
   const [tokenSymbol, setTokenSymbol] = useState(params.get("token") || "ETH");
   const [collateral, setCollateral] = useState(params.get("collateral") || "ETH");
   const [debt, setDebt] = useState(params.get("debt") || "USDC");
+
+  const [swapTokenIn, setSwapTokenIn] = useState(params.get("tokenIn") || "USDC");
+  const [swapTokenOut, setSwapTokenOut] = useState(params.get("tokenOut") || "ETH");
+
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
   const [status, setStatus] = useState<"idle" | "simulating" | "executing" | "success" | "error">("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
+  const [swapQuoting, setSwapQuoting] = useState(false);
   const [simulation, setSimulation] = useState<{
     current?: { isCollateralized: boolean };
     projected?: { isCollateralized: boolean } | null;
   } | null>(null);
 
+  const actionParam = params.get("action");
+  const tokenParam = params.get("token");
+  const collateralParam = params.get("collateral");
+  const debtParam = params.get("debt");
+  const swapTokenInParam = params.get("tokenIn");
+  const swapTokenOutParam = params.get("tokenOut");
+
+  // Sync state when navigation updates query params.
+  useEffect(() => {
+    const validActions: Action[] = ["send", "swap", "deposit", "borrow", "repay"];
+    if (actionParam && validActions.includes(actionParam as Action)) {
+      const nextAction = actionParam as Action;
+      setAction(nextAction);
+      setStatus("idle");
+      setSimulation(null);
+      setSwapQuote(null);
+      setErrorMsg(null);
+      setTxHash(null);
+    }
+
+    if (tokenParam) setTokenSymbol(tokenParam);
+    if (collateralParam) setCollateral(collateralParam);
+    if (debtParam) setDebt(debtParam);
+    if (swapTokenInParam) setSwapTokenIn(swapTokenInParam);
+    if (swapTokenOutParam) setSwapTokenOut(swapTokenOutParam);
+  }, [actionParam, tokenParam, collateralParam, debtParam, swapTokenInParam, swapTokenOutParam]);
+
   useEffect(() => {
     if (!wallet) router.push("/");
   }, [wallet, router]);
+
+  // When inputs change on Swap, clear the previous quote.
+  useEffect(() => {
+    if (action !== "swap") return;
+    setSwapQuote(null);
+    setErrorMsg(null);
+    setStatus("idle");
+  }, [action, swapTokenIn, swapTokenOut, amount]);
 
   const handleSimulate = useCallback(async () => {
     if (!wallet || !amount || action !== "borrow") return;
@@ -46,7 +88,7 @@ export function TransactContent() {
           },
         },
         health: { collateralToken: tokens[collateral], debtToken: tokens[debt] },
-        feeMode: "user_pays",
+        feeMode: "sponsored",
       });
       setSimulation({
         current: quote.current,
@@ -58,6 +100,35 @@ export function TransactContent() {
       setStatus("error");
     }
   }, [wallet, amount, action, collateral, debt]);
+
+  const handleGetSwapQuote = useCallback(async () => {
+    if (!wallet || !amount || action !== "swap") return;
+    setSwapQuoting(true);
+    setStatus("idle");
+    setErrorMsg(null);
+    setSwapQuote(null);
+
+    try {
+      const tokens = getPresets(wallet.getChainId());
+      const tokenIn = (tokens as any)[swapTokenIn];
+      const tokenOut = (tokens as any)[swapTokenOut];
+
+      if (!tokenIn || !tokenOut) throw new Error("Selected tokens are not available on this network.");
+
+      const quote = await wallet.getQuote({
+        tokenIn,
+        tokenOut,
+        amountIn: Amount.parse(amount, tokenIn),
+      });
+
+      setSwapQuote(quote);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Quote failed");
+      setStatus("error");
+    } finally {
+      setSwapQuoting(false);
+    }
+  }, [wallet, amount, action, swapTokenIn, swapTokenOut]);
 
   const handleExecute = useCallback(async () => {
     if (!wallet || !amount) return;
@@ -73,14 +144,26 @@ export function TransactContent() {
           tx = await wallet.transfer(
             tokens[tokenSymbol],
             [{ to: fromAddress(recipient), amount: Amount.parse(amount, tokens[tokenSymbol]) }],
-            { feeMode: "user_pays" },
+            { feeMode: "sponsored" },
+          );
+          break;
+
+        case "swap":
+          tx = await wallet.swap(
+            {
+              tokenIn: tokens[swapTokenIn],
+              tokenOut: tokens[swapTokenOut],
+              amountIn: Amount.parse(amount, tokens[swapTokenIn]),
+              slippageBps: BigInt(50), // 0.5%
+            },
+            { feeMode: "sponsored" },
           );
           break;
 
         case "deposit":
           tx = await wallet.lending().deposit(
             { token: tokens[tokenSymbol], amount: Amount.parse(amount, tokens[tokenSymbol]) },
-            { feeMode: "user_pays" },
+            { feeMode: "sponsored" },
           );
           break;
 
@@ -91,7 +174,7 @@ export function TransactContent() {
               debtToken: tokens[debt],
               amount: Amount.parse(amount, tokens[debt]),
             },
-            { feeMode: "user_pays" },
+            { feeMode: "sponsored" },
           );
           break;
 
@@ -102,7 +185,7 @@ export function TransactContent() {
               debtToken: tokens[debt],
               amount: Amount.parse(amount, tokens[debt]),
             },
-            { feeMode: "user_pays" },
+            { feeMode: "sponsored" },
           );
           break;
       }
@@ -117,11 +200,13 @@ export function TransactContent() {
       setErrorMsg(err instanceof Error ? err.message : "Transaction failed");
       setStatus("error");
     }
-  }, [wallet, action, tokenSymbol, collateral, debt, amount, recipient]);
+  }, [wallet, action, tokenSymbol, collateral, debt, swapTokenIn, swapTokenOut, amount, recipient]);
 
   if (!wallet) return null;
 
-  const actions: Action[] = ["send", "deposit", "borrow", "repay"];
+  const tokens = getPresets(wallet.getChainId());
+
+  const actions: Action[] = ["send", "swap", "deposit", "borrow", "repay"];
 
   return (
     <div className="min-h-screen bg-white">
@@ -138,7 +223,7 @@ export function TransactContent() {
       <div className="max-w-lg mx-auto px-6 py-12 space-y-6">
         <h2 className="text-3xl font-bold text-center">Transact</h2>
 
-        <div className="grid grid-cols-4 bg-gray-100 rounded-xl p-1 gap-1">
+        <div className="grid grid-cols-5 bg-gray-100 rounded-xl p-1 gap-1">
           {actions.map((a) => (
             <button
               key={a}
@@ -148,6 +233,8 @@ export function TransactContent() {
                 setStatus("idle");
                 setSimulation(null);
                 setErrorMsg(null);
+                setSwapQuote(null);
+                setSwapQuoting(false);
               }}
               className={`py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
                 action === a ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
@@ -175,6 +262,46 @@ export function TransactContent() {
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {action === "swap" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="swap-token-in" className="block text-sm font-medium text-gray-700 mb-2">
+                Token In
+              </label>
+              <select
+                id="swap-token-in"
+                value={swapTokenIn}
+                onChange={(e) => setSwapTokenIn(e.target.value)}
+                className="w-full h-14 rounded-xl border border-gray-300 px-4 text-lg bg-white"
+              >
+                {["ETH", "STRK", "USDC", "WBTC"].map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="swap-token-out" className="block text-sm font-medium text-gray-700 mb-2">
+                Token Out
+              </label>
+              <select
+                id="swap-token-out"
+                value={swapTokenOut}
+                onChange={(e) => setSwapTokenOut(e.target.value)}
+                className="w-full h-14 rounded-xl border border-gray-300 px-4 text-lg bg-white"
+              >
+                {["ETH", "STRK", "USDC", "WBTC"].map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -273,14 +400,69 @@ export function TransactContent() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleExecute}
-          disabled={!amount || status === "executing" || (action === "send" && !recipient)}
-          className="w-full h-14 bg-amber-500 text-white text-lg font-semibold rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-40"
-        >
-          {status === "executing" ? "Executing..." : `Execute ${action.charAt(0).toUpperCase() + action.slice(1)}`}
-        </button>
+        {action === "swap" && (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={handleGetSwapQuote}
+              disabled={!amount || swapQuoting || status === "executing"}
+              className="w-full h-12 border-2 border-amber-500 text-amber-600 rounded-xl font-medium hover:bg-amber-50 disabled:opacity-50"
+            >
+              {swapQuoting ? "Getting quote…" : "Get Quote"}
+            </button>
+
+            {swapQuote && (
+              (() => {
+                const tokenOut = (tokens as any)[swapTokenOut];
+                const outAmount = tokenOut ? Amount.fromRaw(swapQuote.amountOutBase, tokenOut) : null;
+                const outUnit = outAmount?.toUnit();
+                const outNumber = outUnit ? Number(outUnit) : null;
+                const outDisplay =
+                  outNumber !== null && Number.isFinite(outNumber) ? outNumber.toFixed(2) : outUnit ?? "—";
+
+                const impactBps = swapQuote.priceImpactBps ?? null;
+                const impactPercent =
+                  impactBps === null ? null : Number(impactBps) / 100; // 100 bps = 1%
+
+                const impactDisplay =
+                  impactPercent !== null && Number.isFinite(impactPercent) ? impactPercent.toFixed(2) : "—";
+
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm space-y-2">
+                    <p className="font-semibold text-gray-900">
+                      You&apos;ll receive approximately {outDisplay} {swapTokenOut}
+                    </p>
+                    <p className="text-gray-700">
+                      Price impact: <span className="font-semibold">{impactDisplay}%</span>
+                    </p>
+                  </div>
+                );
+              })()
+            )}
+
+            {swapQuote && (
+              <button
+                type="button"
+                onClick={handleExecute}
+                disabled={status === "executing"}
+                className="w-full h-14 bg-amber-500 text-white text-lg font-semibold rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-40"
+              >
+                {status === "executing" ? "Executing…" : "Execute Swap"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {action !== "swap" && (
+          <button
+            type="button"
+            onClick={handleExecute}
+            disabled={!amount || status === "executing" || (action === "send" && !recipient)}
+            className="w-full h-14 bg-amber-500 text-white text-lg font-semibold rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-40"
+          >
+            {status === "executing" ? "Executing..." : `Execute ${action.charAt(0).toUpperCase() + action.slice(1)}`}
+          </button>
+        )}
 
         {status === "success" && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center space-y-2">

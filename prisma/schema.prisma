@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum AlertLevel {
+  warning
+  danger
+  critical
+}
+
+model User {
+  /// Use Privy wallet id as the stable user key.
+  id                  String @id
+  walletAddress       String?
+  email               String?
+  telegramChatId     String?
+
+  monitoringEnabled  Boolean   @default(true)
+  mutedUntil         DateTime?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  alertPreferences   AlertPreferences?
+  monitoredPairs     MonitoredPair[]
+  telegramLinks      TelegramLink[]
+  alerts             Alert[]
+}
+
+model AlertPreferences {
+  userId            String @id
+  user              User @relation(fields: [userId], references: [id])
+
+  warningThreshold  Decimal @default(1.50)
+  dangerThreshold   Decimal @default(1.20)
+  criticalThreshold Decimal @default(1.05)
+
+  emailEnabled      Boolean @default(true)
+  telegramEnabled   Boolean @default(false)
+
+  cooldownMinutes   Int @default(15)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model TelegramLink {
+  code        String   @id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  expiresAt   DateTime
+  chatId      String?
+  usedAt      DateTime?
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model MonitoredPair {
+  id              String @id @default(cuid())
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+
+  collateralSymbol String
+  debtSymbol       String
+
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, collateralSymbol, debtSymbol])
+}
+
+model Alert {
+  id             String @id @default(cuid())
+  userId         String
+  user           User @relation(fields: [userId], references: [id])
+
+  collateralSymbol String
+  debtSymbol       String
+
+  level          AlertLevel
+  healthRatio    Decimal
+  message        String
+
+  emailSent      Boolean @default(false)
+  telegramSent   Boolean @default(false)
+
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
