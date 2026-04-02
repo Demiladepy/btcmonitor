@@ -44,6 +44,10 @@ model AlertPreferences {
 
   cooldownMinutes   Int @default(15)
 
+  /// When enabled, the monitor worker will attempt an automated risk action
+  /// (MVP: repay a fixed % of debt on critical health).
+  autoProtectEnabled Boolean @default(false)
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

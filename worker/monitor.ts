@@ -1,9 +1,10 @@
 import cron from "node-cron";
-import { StarkZap, StarkSigner, getPresets } from "starkzap";
+import { StarkZap, StarkSigner, getPresets, PrivySigner, accountPresets, Amount } from "starkzap";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import TelegramBot from "node-telegram-bot-api";
 import { Resend } from "resend";
+import { getPrivyClient } from "../lib/privy-server";
 
 // Sending bots + email.
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!);
@@ -11,6 +12,10 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 // Used for read-only chain queries (we still need a valid wallet instance).
 const SERVER_KEY = process.env.MONITOR_PRIVATE_KEY!;
+
+// Needed for Starknet.js/AVNU sponsored transactions.
+const AVNU_PAYMASTER_API_KEY =
+  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY ?? process.env.NEXT_PUBLIC_PAYMASTER_API_KEY;
 
 async function checkUserPositions(params: {
   user: any;
@@ -67,14 +72,107 @@ async function checkUserPositions(params: {
       });
       if (recent) continue;
 
+      // Auto-protect MVP: execute a sponsored repay on critical WBTC/USDC.
+      // MVP semantics:
+      // - only if monitoringEnabled === true
+      // - repay amount = 10% of current debt (debt in debt-token base units)
+      // - cap repay by wallet USDC balance to avoid approval/tx failures
+      let autoprotectionNote: string | null = null;
+      const isAutoProtectEligible =
+        level === "critical" &&
+        Boolean(prefs.autoProtectEnabled) &&
+        pair.collateralSymbol === "WBTC" &&
+        pair.debtSymbol === "USDC" &&
+        user.monitoringEnabled === true;
+
       const emoji = level === "critical" ? "🚨" : level === "danger" ? "🔴" : "⚠️";
-      const msg = `${emoji} Your ${pair.collateralSymbol}/${pair.debtSymbol} position health is ${ratio.toFixed(
-        3,
-      )}. ${
+      let msg = `${emoji} Your ${pair.collateralSymbol}/${pair.debtSymbol} position health is ${ratio.toFixed(3)}. ${
         level === "critical"
           ? "ACT NOW — liquidation is imminent."
           : "Consider adding collateral or repaying debt."
       }`;
+
+      if (isAutoProtectEligible) {
+        try {
+          // Read current debt amount from the lending provider (base units).
+          const position = await serverWallet.lending().getPosition({
+            collateralToken,
+            debtToken,
+            user: user.walletAddress,
+          });
+
+          const debtAmountBase = (position as any).debtAmount ?? BigInt(0);
+          if (debtAmountBase <= BigInt(0)) {
+            autoprotectionNote = "Auto-protect skipped: no debt detected.";
+          } else {
+            const repayAmountBase = (debtAmountBase * BigInt(10)) / BigInt(100); // 10%
+            if (repayAmountBase <= BigInt(0)) {
+              autoprotectionNote = "Auto-protect skipped: repay amount is too small.";
+            } else {
+              // Connect the user's wallet for execution via PrivySigner.
+              const privy = getPrivyClient();
+              const privyWallet = await privy.wallets().get(user.id);
+              const publicKey = (privyWallet as any)?.publicKey ?? (privyWallet as any)?.public_key;
+
+              const paymaster = AVNU_PAYMASTER_API_KEY
+                ? { headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY } }
+                : undefined;
+
+              const sdk = new StarkZap({
+                network: "sepolia",
+                paymaster,
+              });
+
+              const userWallet = await sdk.connectWallet({
+                account: {
+                  signer: new PrivySigner({
+                    walletId: user.id,
+                    publicKey,
+                    rawSign: async (walletId: string, messageHash: string) => {
+                      const raw = await privy.wallets().rawSign(walletId, { params: { hash: messageHash } });
+                      return raw.signature;
+                    },
+                  }),
+                  accountClass: accountPresets.argentXV050,
+                },
+                accountAddress: user.walletAddress,
+                feeMode: "sponsored",
+              });
+
+              await userWallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" });
+
+              const userUsdcBal = await userWallet.balanceOf(debtToken);
+              const userUsdcBalBase = userUsdcBal.toBase();
+              const repayCappedBase =
+                repayAmountBase > userUsdcBalBase ? userUsdcBalBase : repayAmountBase;
+
+              if (repayCappedBase <= BigInt(0)) {
+                autoprotectionNote = "Auto-protect skipped: insufficient USDC balance in the wallet.";
+              } else {
+                const amount = Amount.fromRaw(repayCappedBase, debtToken);
+                const tx = await userWallet.lending().repay(
+                  {
+                    collateralToken,
+                    debtToken,
+                    amount,
+                  },
+                  { feeMode: "sponsored" },
+                );
+
+                await tx.wait();
+                autoprotectionNote = `Auto-protect executed: repaid ~10% of debt. Tx: ${tx.hash}`;
+              }
+            }
+          }
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          autoprotectionNote = `Auto-protect failed (skipped): ${reason}`;
+        }
+
+        if (autoprotectionNote) {
+          msg = `${msg}\n${autoprotectionNote}`;
+        }
+      }
 
       const sendEmail = Boolean(prefs.emailEnabled) && Boolean(user.email);
       const sendTelegram = Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);

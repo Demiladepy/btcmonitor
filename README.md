@@ -87,3 +87,25 @@ The `api/` directory is automatically detected by Vercel as serverless functions
 **Alert flow**: `useAlerts` detects threshold crossings → calls `sendAlert` from `useNotifications` → POSTs to `/api/send-telegram` or `/api/send-email` → Vercel serverless function delivers the message. Rate limited to once per 5 minutes per alert type, both client-side (localStorage) and server-side (in-memory map).
 
 **Token pair**: Defaults to ETH/USDC on Sepolia. After `getMarkets()` logs the pool list, swap `COLLATERAL_TOKEN` in `src/lib/tokens.ts` to WBTC/tBTC if available.
+
+## Judge demo (bounty checklist)
+1. Set environment variables:
+   - `PRIVY_APP_ID` / `PRIVY_APP_SECRET`
+   - `DATABASE_URL`
+   - `MONITOR_PRIVATE_KEY` (worker read-only health checks + position reads)
+   - `NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY` (AVNU sponsored transactions)
+   - `TELEGRAM_BOT_TOKEN` (Telegram bot)
+2. Sign in (landing page) to create/reuse your wallet.
+3. Ensure your wallet has a `WBTC/USDC` position with debt:
+   - Deposit WBTC as collateral
+   - Borrow USDC so you can repay later
+4. Open `Alerts`:
+   - Set thresholds (especially `Critical Threshold`) so it’s easy to reach critical health during the demo
+   - Toggle `Auto-protect (MVP)` ON
+5. Connect Telegram (Alerts page -> Connect Telegram -> send `/start`).
+6. Trigger critical health:
+   - Use `Transact` -> borrow more (or other actions) until health becomes critical
+   - Wait up to 1 minute for the worker, OR use Telegram `/repay` as a manual trigger
+7. Verify:
+   - Telegram message includes an execution note and tx hash
+   - `Alerts` -> Alert History shows a new critical record for `WBTC/USDC`

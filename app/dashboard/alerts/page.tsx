@@ -54,6 +54,8 @@ export default function AlertsPlaceholderPage() {
 
   const [cooldownMinutes, setCooldownMinutes] = useState(15);
 
+  const [autoProtectEnabled, setAutoProtectEnabled] = useState(false);
+
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
   const telegramLink = useMemo(() => {
     if (!telegramLinkCode) return null;
@@ -89,6 +91,7 @@ export default function AlertsPlaceholderPage() {
       setEmailEnabled(p.emailEnabled);
       setTelegramEnabled(p.telegramEnabled);
       setCooldownMinutes(p.cooldownMinutes);
+      setAutoProtectEnabled(Boolean(p.autoProtectEnabled));
       setEmailAddress(u?.email ?? null);
       setTelegramChatId(u?.telegramChatId ?? null);
     } catch (err: unknown) {
@@ -155,6 +158,7 @@ export default function AlertsPlaceholderPage() {
           emailEnabled,
           telegramEnabled,
           cooldownMinutes,
+          autoProtectEnabled,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -165,7 +169,17 @@ export default function AlertsPlaceholderPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [walletId, warningThreshold, dangerThreshold, criticalThreshold, emailEnabled, telegramEnabled, cooldownMinutes, loadPrefs]);
+  }, [
+    walletId,
+    warningThreshold,
+    dangerThreshold,
+    criticalThreshold,
+    emailEnabled,
+    telegramEnabled,
+    cooldownMinutes,
+    autoProtectEnabled,
+    loadPrefs,
+  ]);
 
   const handleConnectTelegram = useCallback(async () => {
     if (!walletId) return;
@@ -380,6 +394,39 @@ export default function AlertsPlaceholderPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold text-gray-900">Auto-protect (MVP)</p>
+                <p className="text-sm text-gray-600">If health becomes critical, the monitor will repay 10% of your debt.</p>
+              </div>
+
+              <label className="relative inline-flex h-7 w-14 items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoProtectEnabled}
+                  onChange={(e) => setAutoProtectEnabled(e.target.checked)}
+                  className="sr-only"
+                />
+                <span
+                  className={`absolute inset-0 rounded-full transition-colors ${
+                    autoProtectEnabled ? "bg-amber-500" : "bg-gray-200"
+                  }`}
+                />
+                <span
+                  className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform ${
+                    autoProtectEnabled ? "translate-x-7" : "translate-x-0"
+                  }`}
+                />
+              </label>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              This is an automated execution feature. If the transaction fails or funds are insufficient, the monitor will
+              fall back to sending alerts.
+            </p>
           </div>
 
           <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm space-y-4">

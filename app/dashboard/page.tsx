@@ -33,6 +33,9 @@ export default function Dashboard() {
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState(true);
 
+  const [walletId, setWalletId] = useState<string | null>(null);
+  const [autoProtectEnabled, setAutoProtectEnabled] = useState<boolean | null>(null);
+
   const [btcUsd, setBtcUsd] = useState<number | null>(null);
   const [starkUsd, setStarkUsd] = useState<number | null>(null);
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState<number | null>(null);
@@ -46,6 +49,34 @@ export default function Dashboard() {
   useEffect(() => {
     if (!wallet) router.push("/");
   }, [wallet, router]);
+
+  // Preferences are stored in Prisma and keyed by the Privy wallet id (localStorage).
+  useEffect(() => {
+    setWalletId(localStorage.getItem("btcmonitor_wallet_id"));
+  }, []);
+
+  useEffect(() => {
+    if (!walletId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/alerts/preferences", {
+          headers: { "x-wallet-id": walletId },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Failed to load preferences");
+        if (cancelled) return;
+        setAutoProtectEnabled(Boolean(data?.alertPreferences?.autoProtectEnabled));
+      } catch {
+        // Non-fatal
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [walletId]);
 
   const fetchBalances = useCallback(async () => {
     if (!wallet) return;
@@ -297,9 +328,24 @@ export default function Dashboard() {
               return (
                 <div key={i} className="border border-gray-200 rounded-2xl p-6 space-y-4 bg-white">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold">
-                      {pos.collateral} / {pos.debt}
-                    </h3>
+                    <div>
+                      <h3 className="text-lg font-bold">
+                        {pos.collateral} / {pos.debt}
+                      </h3>
+                      {pos.collateral === "WBTC" && pos.debt === "USDC" && !pos.loading && (
+                        <span
+                          className={`mt-2 inline-flex items-center px-2 py-1 rounded-full text-xs border ${
+                            autoProtectEnabled === null
+                              ? "bg-gray-50 border-gray-200 text-gray-700"
+                              : autoProtectEnabled
+                                ? "bg-amber-50 border-amber-200 text-amber-800"
+                                : "bg-gray-50 border-gray-200 text-gray-700"
+                          }`}
+                        >
+                          Auto-protect: {autoProtectEnabled === null ? "—" : autoProtectEnabled ? "ON" : "OFF"}
+                        </span>
+                      )}
+                    </div>
                     {pos.loading ? (
                       <span className="text-xs text-gray-400">Loading...</span>
                     ) : pos.error ? (

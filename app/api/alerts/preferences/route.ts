@@ -25,6 +25,7 @@ export async function GET(req: Request) {
         emailEnabled: alertPreferences.emailEnabled,
         telegramEnabled: alertPreferences.telegramEnabled,
         cooldownMinutes: alertPreferences.cooldownMinutes,
+        autoProtectEnabled: alertPreferences.autoProtectEnabled,
       },
       user: {
         email: user.email,
@@ -48,11 +49,13 @@ export async function PUT(req: Request) {
       emailEnabled?: boolean;
       telegramEnabled?: boolean;
       cooldownMinutes?: number;
+      autoProtectEnabled?: boolean;
     };
 
     const warningThreshold = body.warningThreshold ?? 1.5;
     const dangerThreshold = body.dangerThreshold ?? 1.2;
     const criticalThreshold = body.criticalThreshold ?? 1.05;
+    const autoProtectEnabled = body.autoProtectEnabled ?? false;
 
     const updated = await prisma.alertPreferences.upsert({
       where: { userId: walletId },
@@ -63,6 +66,7 @@ export async function PUT(req: Request) {
         emailEnabled: body.emailEnabled ?? true,
         telegramEnabled: body.telegramEnabled ?? false,
         cooldownMinutes: body.cooldownMinutes ?? 15,
+        autoProtectEnabled,
       },
       create: {
         userId: walletId,
@@ -72,6 +76,7 @@ export async function PUT(req: Request) {
         emailEnabled: body.emailEnabled ?? true,
         telegramEnabled: body.telegramEnabled ?? false,
         cooldownMinutes: body.cooldownMinutes ?? 15,
+        autoProtectEnabled,
       },
     });
 
@@ -83,6 +88,7 @@ export async function PUT(req: Request) {
         emailEnabled: updated.emailEnabled,
         telegramEnabled: updated.telegramEnabled,
         cooldownMinutes: updated.cooldownMinutes,
+        autoProtectEnabled: updated.autoProtectEnabled,
       },
     });
   } catch (err: unknown) {

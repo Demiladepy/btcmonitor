@@ -53,6 +53,7 @@ export async function ensureUserDefaults(walletId: string) {
       dangerThreshold: new Prisma.Decimal(1.2),
       criticalThreshold: new Prisma.Decimal(1.05),
       cooldownMinutes: 15,
+      autoProtectEnabled: false,
     },
     update: {},
   });
