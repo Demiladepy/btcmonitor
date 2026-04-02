@@ -1,5 +1,7 @@
 "use client";
 
+import { MonitorHubCard } from "@/app/dashboard/MonitorHubCard";
+import { BTC_MONITOR_WALLET_ID_KEY } from "@/lib/btc-health-network";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,9 +49,7 @@ export default function AlertsPlaceholderPage() {
   const [dangerThreshold, setDangerThreshold] = useState(1.2);
   const [criticalThreshold, setCriticalThreshold] = useState(1.05);
 
-  const [emailEnabled, setEmailEnabled] = useState(true);
   const [telegramEnabled, setTelegramEnabled] = useState(false);
-  const [emailAddress, setEmailAddress] = useState<string | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string | null>(null);
 
   const [cooldownMinutes, setCooldownMinutes] = useState(15);
@@ -67,7 +67,7 @@ export default function AlertsPlaceholderPage() {
   const [walletId, setWalletId] = useState<string | null>(null);
 
   useEffect(() => {
-    setWalletId(localStorage.getItem("btcmonitor_wallet_id"));
+    setWalletId(localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY));
   }, []);
 
   const loadPrefs = useCallback(async () => {
@@ -88,11 +88,9 @@ export default function AlertsPlaceholderPage() {
       setWarningThreshold(p.warningThreshold);
       setDangerThreshold(p.dangerThreshold);
       setCriticalThreshold(p.criticalThreshold);
-      setEmailEnabled(p.emailEnabled);
       setTelegramEnabled(p.telegramEnabled);
       setCooldownMinutes(p.cooldownMinutes);
       setAutoProtectEnabled(Boolean(p.autoProtectEnabled));
-      setEmailAddress(u?.email ?? null);
       setTelegramChatId(u?.telegramChatId ?? null);
     } catch (err: unknown) {
       setPrefsError(err instanceof Error ? err.message : "Failed to load preferences");
@@ -155,8 +153,6 @@ export default function AlertsPlaceholderPage() {
           warningThreshold,
           dangerThreshold,
           criticalThreshold,
-          emailEnabled,
-          telegramEnabled,
           cooldownMinutes,
           autoProtectEnabled,
         }),
@@ -174,8 +170,6 @@ export default function AlertsPlaceholderPage() {
     warningThreshold,
     dangerThreshold,
     criticalThreshold,
-    emailEnabled,
-    telegramEnabled,
     cooldownMinutes,
     autoProtectEnabled,
     loadPrefs,
@@ -237,6 +231,8 @@ export default function AlertsPlaceholderPage() {
           </div>
         )}
 
+        <MonitorHubCard walletId={walletId} telegramHint="alertsPage" />
+
         <section className="grid grid-cols-1 gap-6">
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold">Alert Thresholds</h3>
@@ -293,63 +289,24 @@ export default function AlertsPlaceholderPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-semibold text-gray-900">Email</p>
-                  <p className="text-sm text-gray-600">Email alerts are sent when your positions cross thresholds</p>
-                </div>
-
-                <label className="relative inline-flex h-7 w-14 items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={emailEnabled}
-                    onChange={(e) => setEmailEnabled(e.target.checked)}
-                    className="sr-only"
-                  />
-                  <span
-                    className={`absolute inset-0 rounded-full transition-colors ${emailEnabled ? "bg-amber-500" : "bg-gray-200"}`}
-                  />
-                  <span
-                    className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform ${
-                      emailEnabled ? "translate-x-7" : "translate-x-0"
-                    }`}
-                  />
-                </label>
-              </div>
-
-              <div className="mt-1">
-                <p className="text-xs text-gray-500">Connected email address</p>
-                <p className="font-mono text-sm">{emailAddress ?? "—"}</p>
-              </div>
-            </div>
-
+          <div className="grid grid-cols-1 gap-6">
             <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-semibold text-gray-900">Telegram</p>
-                  <p className="text-sm text-gray-600">Instant DM alerts directly in Telegram</p>
+                  <p className="text-sm text-gray-600">
+                    Turn on the Telegram channel in <span className="font-medium">Monitor notifications</span> above, then
+                    connect the bot here.
+                  </p>
                 </div>
 
-                <label className="relative inline-flex h-7 w-14 items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={telegramEnabled}
-                    readOnly
-                    className="sr-only"
-                  />
-                  <span
-                    className={`absolute inset-0 rounded-full transition-colors ${
-                      telegramEnabled ? "bg-amber-500" : "bg-gray-200"
-                    }`}
-                  />
-                  <span
-                    className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform ${
-                      telegramEnabled ? "translate-x-7" : "translate-x-0"
-                    }`}
-                  />
-                </label>
+                <span
+                  className={`inline-flex h-7 px-3 items-center rounded-full text-xs font-semibold ${
+                    telegramEnabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {telegramEnabled ? "Linked" : "Not linked"}
+                </span>
               </div>
 
               {telegramEnabled ? (

@@ -1,10 +1,18 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
-import { StarkZap, OnboardStrategy, accountPresets, ChainId, type WalletInterface, AvnuSwapProvider } from "starkzap";
+import { usePathname } from "next/navigation";
+import { StarkZap, OnboardStrategy, accountPresets, type WalletInterface, AvnuSwapProvider } from "starkzap";
+import {
+  type BtcHealthNetwork,
+  BTC_HEALTH_NETWORK_STORAGE_KEY,
+  BTC_MONITOR_WALLET_ADDRESS_KEY,
+  BTC_MONITOR_WALLET_ID_KEY,
+  defaultBtcHealthNetwork,
+  getEffectiveBtcHealthNetwork,
+  networkToChainId,
+} from "@/lib/btc-health-network";
 
-const WALLET_ID_STORAGE_KEY = "btcmonitor_wallet_id";
-const WALLET_ADDRESS_STORAGE_KEY = "btcmonitor_wallet_address";
 // Required for Starknet "sponsored" (gasless) transactions via AVNU paymaster.
 // This is intentionally `NEXT_PUBLIC_` because wallet onboarding happens in the browser.
 const AVNU_PAYMASTER_API_KEY =
@@ -13,6 +21,8 @@ const AVNU_PAYMASTER_API_KEY =
 interface WalletState {
   wallet: WalletInterface | null;
   address: string | null;
+  network: BtcHealthNetwork;
+  setNetwork: (next: BtcHealthNetwork) => void;
   isConnecting: boolean;
   error: string | null;
   connect: () => Promise<void>;
@@ -22,32 +32,61 @@ interface WalletState {
 const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [wallet, setWallet] = useState<WalletInterface | null>(null);
   const [address, setAddress] = useState<string | null>(null);
+  const [network, setNetworkState] = useState<BtcHealthNetwork>(() => defaultBtcHealthNetwork());
+
+  useEffect(() => {
+    setNetworkState(getEffectiveBtcHealthNetwork());
+  }, []);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sdkRef = useRef<StarkZap | null>(null);
+
+  const setNetwork = useCallback((next: BtcHealthNetwork) => {
+    if (next === network) return;
+    try {
+      localStorage.setItem(BTC_HEALTH_NETWORK_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem(BTC_MONITOR_WALLET_ID_KEY);
+    localStorage.removeItem(BTC_MONITOR_WALLET_ADDRESS_KEY);
+    setWallet(null);
+    setAddress(null);
+    sdkRef.current = null;
+    setNetworkState(next);
+  }, [network]);
+
+  const disconnect = useCallback(() => {
+    localStorage.removeItem(BTC_MONITOR_WALLET_ID_KEY);
+    localStorage.removeItem(BTC_MONITOR_WALLET_ADDRESS_KEY);
+    setWallet(null);
+    setAddress(null);
+    sdkRef.current = null;
+  }, []);
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
 
-    const storedWalletId = localStorage.getItem(WALLET_ID_STORAGE_KEY);
+    const storedWalletId = localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY);
+    const chainId = networkToChainId(network);
+    const rpcUrl = `${window.location.origin}/api/starknet-rpc?network=${encodeURIComponent(network)}`;
 
     const connectOnce = async (existingWalletId?: string | null) => {
       if (!sdkRef.current) {
-        // Same-origin API route proxies to upstream RPC (browser cannot call most public RPCs — CORS).
         const paymaster =
           AVNU_PAYMASTER_API_KEY
             ? {
-                // AVNU paymaster expects this header.
                 headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY },
               }
             : undefined;
 
         sdkRef.current = new StarkZap({
-          rpcUrl: `${window.location.origin}/api/starknet-rpc`,
-          chainId: ChainId.SEPOLIA,
+          rpcUrl,
+          chainId,
           paymaster,
         });
       }
@@ -77,9 +116,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const publicKey = data.wallet.publicKey;
       const walletAddress = data.wallet.address;
 
-      // Persist for next time (refresh / navigation).
-      localStorage.setItem(WALLET_ID_STORAGE_KEY, walletId);
-      localStorage.setItem(WALLET_ADDRESS_STORAGE_KEY, walletAddress);
+      localStorage.setItem(BTC_MONITOR_WALLET_ID_KEY, walletId);
+      localStorage.setItem(BTC_MONITOR_WALLET_ADDRESS_KEY, walletAddress);
 
       const { wallet: w } = await sdk.onboard({
         strategy: OnboardStrategy.Privy,
@@ -95,7 +133,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         feeMode: "sponsored",
       });
 
-      // Register swap provider for wallet.getQuote() / wallet.swap().
       w.registerSwapProvider(new AvnuSwapProvider());
       w.setDefaultSwapProvider("avnu");
 
@@ -106,10 +143,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       await connectOnce(storedWalletId);
     } catch (err: unknown) {
-      // If the stored wallet is invalid/expired, clear and retry with a fresh wallet.
       if (storedWalletId) {
-        localStorage.removeItem(WALLET_ID_STORAGE_KEY);
-        localStorage.removeItem(WALLET_ADDRESS_STORAGE_KEY);
+        localStorage.removeItem(BTC_MONITOR_WALLET_ID_KEY);
+        localStorage.removeItem(BTC_MONITOR_WALLET_ADDRESS_KEY);
         try {
           await connectOnce(null);
           return;
@@ -122,26 +158,24 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [network]);
 
-  const disconnect = useCallback(() => {
-    localStorage.removeItem(WALLET_ID_STORAGE_KEY);
-    localStorage.removeItem(WALLET_ADDRESS_STORAGE_KEY);
-    setWallet(null);
-    setAddress(null);
-    sdkRef.current = null;
-  }, []);
-
-  // Auto-reconnect if we already have a wallet id stored.
+  // Recreate SDK if network changes while disconnected.
   useEffect(() => {
-    const stored = localStorage.getItem(WALLET_ID_STORAGE_KEY);
+    sdkRef.current = null;
+  }, [network]);
+
+  // Auto-reconnect everywhere except the landing page (explicit "Continue" there).
+  useEffect(() => {
+    if (pathname === "/") return;
+    const stored = localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY);
     if (!stored) return;
     if (wallet || isConnecting) return;
-    connect();
-  }, [connect, wallet, isConnecting]);
+    void connect();
+  }, [pathname, wallet, isConnecting, connect]);
 
   return (
-    <WalletContext.Provider value={{ wallet, address, isConnecting, error, connect, disconnect }}>
+    <WalletContext.Provider value={{ wallet, address, network, setNetwork, isConnecting, error, connect, disconnect }}>
       {children}
     </WalletContext.Provider>
   );

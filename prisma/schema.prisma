@@ -48,6 +48,16 @@ model AlertPreferences {
   /// (MVP: repay a fixed % of debt on critical health).
   autoProtectEnabled Boolean @default(false)
 
+  /// Explicit address for Resend; falls back to User.email when null.
+  notifyContactEmail String?
+
+  notifyPositions    Boolean @default(true)
+  notifyYield        Boolean @default(false)
+  notifyLiquidation  Boolean @default(true)
+  notifyMarket       Boolean @default(false)
+
+  lastMarketDigestAt DateTime?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

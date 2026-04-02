@@ -1,5 +1,7 @@
 "use client";
 
+import { MonitorHubCard } from "@/app/dashboard/MonitorHubCard";
+import { BTC_MONITOR_WALLET_ID_KEY, type BtcHealthNetwork, networkToChainId } from "@/lib/btc-health-network";
 import { useWallet } from "@/lib/wallet-context";
 import { chainDisplayLabel } from "@/lib/chain-label";
 import { getDashboardBalanceSymbols, getVesuPositionPairs } from "@/lib/dashboard-config";
@@ -26,7 +28,7 @@ function usdFromScale(value: bigint): string {
 }
 
 export default function Dashboard() {
-  const { wallet, address, disconnect } = useWallet();
+  const { wallet, address, disconnect, network, setNetwork } = useWallet();
   const router = useRouter();
   const balanceSymbols = useMemo(() => getDashboardBalanceSymbols(), []);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -52,7 +54,7 @@ export default function Dashboard() {
 
   // Preferences are stored in Prisma and keyed by the Privy wallet id (localStorage).
   useEffect(() => {
-    setWalletId(localStorage.getItem("btcmonitor_wallet_id"));
+    setWalletId(localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY));
   }, []);
 
   useEffect(() => {
@@ -236,6 +238,18 @@ export default function Dashboard() {
 
   if (!wallet) return null;
 
+  const handleNetworkChange = (next: BtcHealthNetwork) => {
+    if (next === network) return;
+    const ok =
+      typeof window !== "undefined" &&
+      window.confirm(
+        "Switching network clears this browser’s saved wallet. You’ll reconnect from the home page. Continue?",
+      );
+    if (!ok) return;
+    setNetwork(next);
+    router.push("/");
+  };
+
   const lastUpdatedLabel = pricesUpdatedAt
     ? Date.now() - pricesUpdatedAt < 60_000
       ? "just now"
@@ -249,8 +263,17 @@ export default function Dashboard() {
           BTC Health <span className="text-amber-500">Monitor</span>
         </h1>
         <div className="flex items-center gap-4 flex-wrap justify-end">
+          <select
+            value={network}
+            onChange={(e) => handleNetworkChange(e.target.value as BtcHealthNetwork)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-800"
+            aria-label="Starknet network"
+          >
+            <option value="sepolia">Sepolia</option>
+            <option value="mainnet">Mainnet</option>
+          </select>
           <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-            {chainDisplayLabel(wallet.getChainId())}
+            {chainDisplayLabel(networkToChainId(network))}
           </span>
           <button
             type="button"
@@ -276,6 +299,8 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        <MonitorHubCard walletId={walletId} />
+
         <div className="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm flex items-center justify-between flex-wrap gap-4">
           <div className="text-sm text-gray-900 font-semibold">
             BTC{" "}
@@ -286,7 +311,7 @@ export default function Dashboard() {
             STRK {starkUsd === null ? "—" : `$${starkUsd.toFixed(2)}`}
           </div>
           <div className="text-sm text-gray-600">
-            Network: Sepolia · Last updated: {lastUpdatedLabel}
+            Network: {chainDisplayLabel(wallet.getChainId())} · Last updated: {lastUpdatedLabel}
           </div>
         </div>
 

@@ -7,8 +7,14 @@ export const dynamic = "force-dynamic";
 
 function toNumberMaybe(d: Prisma.Decimal | null | undefined): number | null {
   if (!d) return null;
-  // Prisma Decimal has toNumber().
   return d.toNumber();
+}
+
+function isValidOptionalEmail(s: string | null | undefined): boolean {
+  if (s == null || s === "") return true;
+  const t = s.trim();
+  if (t.length > 254) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
 export async function GET(req: Request) {
@@ -26,6 +32,12 @@ export async function GET(req: Request) {
         telegramEnabled: alertPreferences.telegramEnabled,
         cooldownMinutes: alertPreferences.cooldownMinutes,
         autoProtectEnabled: alertPreferences.autoProtectEnabled,
+        notifyContactEmail: alertPreferences.notifyContactEmail,
+        notifyPositions: alertPreferences.notifyPositions,
+        notifyYield: alertPreferences.notifyYield,
+        notifyLiquidation: alertPreferences.notifyLiquidation,
+        notifyMarket: alertPreferences.notifyMarket,
+        lastMarketDigestAt: alertPreferences.lastMarketDigestAt?.toISOString() ?? null,
       },
       user: {
         email: user.email,
@@ -50,12 +62,28 @@ export async function PUT(req: Request) {
       telegramEnabled?: boolean;
       cooldownMinutes?: number;
       autoProtectEnabled?: boolean;
+      notifyContactEmail?: string | null;
+      notifyPositions?: boolean;
+      notifyYield?: boolean;
+      notifyLiquidation?: boolean;
+      notifyMarket?: boolean;
     };
+
+    if (body.notifyContactEmail !== undefined && body.notifyContactEmail !== null && !isValidOptionalEmail(body.notifyContactEmail)) {
+      return NextResponse.json({ error: "Invalid notify email address" }, { status: 400 });
+    }
 
     const warningThreshold = body.warningThreshold ?? 1.5;
     const dangerThreshold = body.dangerThreshold ?? 1.2;
     const criticalThreshold = body.criticalThreshold ?? 1.05;
     const autoProtectEnabled = body.autoProtectEnabled ?? false;
+
+    const notifyContactEmailNormalized =
+      body.notifyContactEmail === undefined
+        ? undefined
+        : body.notifyContactEmail === null || body.notifyContactEmail === ""
+          ? null
+          : body.notifyContactEmail.trim();
 
     const updated = await prisma.alertPreferences.upsert({
       where: { userId: walletId },
@@ -67,6 +95,11 @@ export async function PUT(req: Request) {
         telegramEnabled: body.telegramEnabled ?? false,
         cooldownMinutes: body.cooldownMinutes ?? 15,
         autoProtectEnabled,
+        ...(notifyContactEmailNormalized !== undefined ? { notifyContactEmail: notifyContactEmailNormalized } : {}),
+        ...(body.notifyPositions !== undefined ? { notifyPositions: body.notifyPositions } : {}),
+        ...(body.notifyYield !== undefined ? { notifyYield: body.notifyYield } : {}),
+        ...(body.notifyLiquidation !== undefined ? { notifyLiquidation: body.notifyLiquidation } : {}),
+        ...(body.notifyMarket !== undefined ? { notifyMarket: body.notifyMarket } : {}),
       },
       create: {
         userId: walletId,
@@ -77,6 +110,11 @@ export async function PUT(req: Request) {
         telegramEnabled: body.telegramEnabled ?? false,
         cooldownMinutes: body.cooldownMinutes ?? 15,
         autoProtectEnabled,
+        notifyContactEmail: notifyContactEmailNormalized ?? null,
+        notifyPositions: body.notifyPositions ?? true,
+        notifyYield: body.notifyYield ?? false,
+        notifyLiquidation: body.notifyLiquidation ?? true,
+        notifyMarket: body.notifyMarket ?? false,
       },
     });
 
@@ -89,6 +127,12 @@ export async function PUT(req: Request) {
         telegramEnabled: updated.telegramEnabled,
         cooldownMinutes: updated.cooldownMinutes,
         autoProtectEnabled: updated.autoProtectEnabled,
+        notifyContactEmail: updated.notifyContactEmail,
+        notifyPositions: updated.notifyPositions,
+        notifyYield: updated.notifyYield,
+        notifyLiquidation: updated.notifyLiquidation,
+        notifyMarket: updated.notifyMarket,
+        lastMarketDigestAt: updated.lastMarketDigestAt?.toISOString() ?? null,
       },
     });
   } catch (err: unknown) {
@@ -96,8 +140,6 @@ export async function PUT(req: Request) {
   }
 }
 
-// Allow POST too (the UI spec says POST, while the route spec says PUT).
 export async function POST(req: Request) {
   return PUT(req);
 }
-

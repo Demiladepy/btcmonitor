@@ -3,6 +3,9 @@ import { StarkZap, StarkSigner, getPresets, PrivySigner, accountPresets, Amount 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPrivyClient } from "@/lib/privy-server";
+import { getMonitorWorkerNetwork, starkZapNetworkName } from "@/lib/btc-health-network";
+
+const telegramBotNetwork = starkZapNetworkName(getMonitorWorkerNetwork());
 
 const AVNU_PAYMASTER_API_KEY =
   process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY ?? process.env.NEXT_PUBLIC_PAYMASTER_API_KEY;
@@ -124,7 +127,7 @@ export async function POST(req: Request) {
       const monitorKey = process.env.MONITOR_PRIVATE_KEY;
       if (!monitorKey) throw new Error("MONITOR_PRIVATE_KEY not configured");
 
-      const sdk = new StarkZap({ network: "sepolia" });
+      const sdk = new StarkZap({ network: telegramBotNetwork });
       const wallet = await sdk.connectWallet({
         account: { signer: new StarkSigner(monitorKey) },
       });
@@ -168,7 +171,8 @@ export async function POST(req: Request) {
         lines.push(`${pair.collateralSymbol}/${pair.debtSymbol}: ${hr} (${level})`);
       }
 
-      const header = `BTC Health Monitor status (Sepolia)\nMuted: ${user.monitoringEnabled ? "No" : "Yes"}`;
+      const netLabel = telegramBotNetwork === "mainnet" ? "Mainnet" : "Sepolia";
+      const header = `BTC Health Monitor status (${netLabel})\nMuted: ${user.monitoringEnabled ? "No" : "Yes"}`;
       await sendTelegramMessage(chatId, [header, ...lines].join("\n"));
       return NextResponse.json({ ok: true });
     }
@@ -200,7 +204,7 @@ export async function POST(req: Request) {
       const monitorKey = process.env.MONITOR_PRIVATE_KEY;
       if (!monitorKey) throw new Error("MONITOR_PRIVATE_KEY not configured");
 
-      const sdk = new StarkZap({ network: "sepolia" });
+      const sdk = new StarkZap({ network: telegramBotNetwork });
       const wallet = await sdk.connectWallet({
         account: { signer: new StarkSigner(monitorKey) },
       });
@@ -279,7 +283,7 @@ export async function POST(req: Request) {
         : undefined;
 
       const execSdk = new StarkZap({
-        network: "sepolia",
+        network: telegramBotNetwork,
         paymaster,
       });
 
