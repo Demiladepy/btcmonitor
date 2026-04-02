@@ -1,17 +1,18 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { normalizeDatabaseUrl } from "@/lib/database-url";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL is not set. Add your Supabase Postgres connection string (pooler or direct) to .env.local.",
-    );
-  }
+  const raw = process.env.DATABASE_URL;
+  const connectionString = normalizeDatabaseUrl(raw);
 
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg({
+    connectionString,
+    // Avoid hanging forever on unreachable hosts (helps surface errors in dev).
+    connectionTimeoutMillis: 15_000,
+  });
   return new PrismaClient({ adapter });
 }
 
