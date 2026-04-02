@@ -22,6 +22,10 @@ out/
 .env.local
 .env.*.local
 
+# Local SQLite (legacy dev DB; app uses Supabase Postgres now)
+dev.db
+dev.db-journal
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

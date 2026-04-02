@@ -53,14 +53,24 @@ npm run dev
 
 | Variable | Required | Description |
 |---|---|---|
+| `DATABASE_URL` | **Yes** (API + worker) | Supabase Postgres URI (pooler recommended for Vercel). See `.env.example`. |
+| `DIRECT_URL` | Optional | Postgres **direct** URI (port 5432) for `prisma migrate` / shadow DB; can match `DATABASE_URL` for simple setups. |
 | `TELEGRAM_BOT_TOKEN` | For Telegram alerts | Create via [@BotFather](https://t.me/BotFather) |
 | `RESEND_API_KEY` | For email alerts | Get from [resend.com](https://resend.com) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Optional | If you use the Supabase JS client |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase anon / publishable key (not `service_role`) |
 | `VITE_APP_URL` | Optional | Your deployed URL for links in alert messages |
 | `STARKNET_SEPOLIA_RPC_URL` | Optional | Upstream RPC when the app uses Sepolia (see `/api/starknet-rpc`) |
 | `STARKNET_MAINNET_RPC_URL` | Optional | Upstream RPC when the app uses Mainnet |
 | `MONITOR_STARKNET_NETWORK` | Optional | Worker + Telegram `/status` chain: `mainnet` or `sepolia` (defaults: mainnet in production, Sepolia in dev) |
 
 > All sensitive keys are server-side only (no `VITE_` prefix). They are never bundled into the browser.
+
+### Supabase database
+
+1. Create a project at [supabase.com](https://supabase.com) and copy the **Database → Connection string** (URI).
+2. Copy [`.env.example`](.env.example) to `.env` or `.env.local` and set `DATABASE_URL` (and optional `DIRECT_URL`).
+3. Apply migrations: `npx prisma migrate deploy` (use a direct connection if the pooler rejects migrations).
 
 ## Setting up Telegram alerts
 
