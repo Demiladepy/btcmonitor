@@ -65,6 +65,8 @@ export default function AlertsPlaceholderPage() {
   const [alerts, setAlerts] = useState<AlertHistoryItem[]>([]);
 
   const [walletId, setWalletId] = useState<string | null>(null);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     setWalletId(localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY));
@@ -195,6 +197,29 @@ export default function AlertsPlaceholderPage() {
     }
   }, [walletId]);
 
+  const handleTestMonitor = useCallback(async () => {
+    setTestRunning(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/cron/monitor");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTestResult(`Error: ${data?.error ?? res.statusText}`);
+      } else {
+        setTestResult(
+          `Run complete — ${data.usersChecked ?? 0} user(s) checked, ${data.alertsSent ?? 0} alert(s) sent.${
+            data.errors?.length ? ` Errors: ${data.errors.join("; ")}` : ""
+          }`,
+        );
+        await loadHistory().catch(() => undefined);
+      }
+    } catch (err: unknown) {
+      setTestResult(err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setTestRunning(false);
+    }
+  }, [loadHistory]);
+
   const copyTelegramLink = useCallback(async () => {
     if (!telegramLink) return;
     try {
@@ -224,6 +249,28 @@ export default function AlertsPlaceholderPage() {
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Alerts</h2>
           <p className="text-gray-500">Tune thresholds, choose channels, and view your alert history.</p>
         </section>
+
+        <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-2xl px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-sm font-medium text-green-800">
+              Monitoring active — checking every 60 seconds via Vercel Cron
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {testResult && (
+              <span className="text-xs text-green-700 max-w-xs truncate">{testResult}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleTestMonitor}
+              disabled={testRunning}
+              className="text-xs font-semibold px-4 py-2 rounded-xl bg-white border border-green-300 text-green-800 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-wait"
+            >
+              {testRunning ? "Running…" : "▶ Test Monitor"}
+            </button>
+          </div>
+        </div>
 
         {prefsError && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">

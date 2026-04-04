@@ -1,27 +1,27 @@
-import cron from "node-cron";
+import { NextResponse } from "next/server";
 import { StarkZap, StarkSigner, getPresets, PrivySigner, accountPresets, Amount } from "starkzap";
 import { Prisma } from "@prisma/client";
-import { prisma } from "../lib/prisma";
-import TelegramBot from "node-telegram-bot-api";
+import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
-import { getPrivyClient } from "../lib/privy-server";
-import { getMonitorWorkerNetwork, starkZapNetworkName } from "../lib/btc-health-network";
+import { getPrivyClient } from "@/lib/privy-server";
+import { getMonitorWorkerNetwork, starkZapNetworkName } from "@/lib/btc-health-network";
 
-// Sending bots + email.
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!);
-const resend = new Resend(process.env.RESEND_API_KEY!);
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
-// Used for read-only chain queries (we still need a valid wallet instance).
-const SERVER_KEY = process.env.MONITOR_PRIVATE_KEY!;
-
-// Needed for Starknet.js/AVNU sponsored transactions.
+const MARKET_DIGEST_MS = 6 * 60 * 60 * 1000;
 const AVNU_PAYMASTER_API_KEY =
   process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY ?? process.env.NEXT_PUBLIC_PAYMASTER_API_KEY;
 
-const MARKET_DIGEST_MS = 6 * 60 * 60 * 1000;
-
-const workerNetwork = getMonitorWorkerNetwork();
-const workerNetworkName = starkZapNetworkName(workerNetwork);
+async function sendTelegram(chatId: string, text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  }).catch(() => undefined);
+}
 
 function wantHealthNotification(
   level: "warning" | "danger" | "critical",
@@ -31,16 +31,14 @@ function wantHealthNotification(
   return prefs.notifyLiquidation || prefs.notifyPositions;
 }
 
-function notifyEmailTo(prefs: { notifyContactEmail: string | null }, user: { email: string | null }): string | null {
+function notifyEmailTo(
+  prefs: { notifyContactEmail: string | null },
+  user: { email: string | null },
+): string | null {
   return prefs.notifyContactEmail?.trim() || user.email || null;
 }
 
-async function fetchMarketSnapshot(): Promise<{
-  btc: number;
-  btc24h: number | null;
-  stark: number;
-  stark24h: number | null;
-}> {
+async function fetchMarketSnapshot() {
   const url =
     "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,starknet&vs_currencies=usd&include_24hr_change=true";
   const r = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -51,7 +49,7 @@ async function fetchMarketSnapshot(): Promise<{
   };
   const btc = j.bitcoin?.usd;
   const stark = j.starknet?.usd;
-  if (typeof btc !== "number" || typeof stark !== "number") throw new Error("CoinGecko parse");
+  if (typeof btc !== "number" || typeof stark !== "number") throw new Error("CoinGecko parse error");
   return {
     btc,
     btc24h: typeof j.bitcoin?.usd_24h_change === "number" ? j.bitcoin.usd_24h_change : null,
@@ -60,20 +58,7 @@ async function fetchMarketSnapshot(): Promise<{
   };
 }
 
-async function maybeSendMarketDigest(user: {
-  id: string;
-  email: string | null;
-  telegramChatId: string | null;
-  monitoredPairs: { collateralSymbol: string; debtSymbol: string }[];
-  alertPreferences: {
-    notifyMarket: boolean;
-    notifyYield: boolean;
-    emailEnabled: boolean;
-    telegramEnabled: boolean;
-    notifyContactEmail: string | null;
-    lastMarketDigestAt: Date | null;
-  } | null;
-}) {
+async function maybeSendMarketDigest(user: any, resend: Resend) {
   const prefs = user.alertPreferences;
   if (!prefs?.notifyMarket) return;
   if (!prefs.emailEnabled && !prefs.telegramEnabled) return;
@@ -82,32 +67,38 @@ async function maybeSendMarketDigest(user: {
   if (Date.now() - last < MARKET_DIGEST_MS) return;
 
   const emailTo = notifyEmailTo(prefs, user);
-  const sendEmail = Boolean(prefs.emailEnabled) && Boolean(emailTo);
-  const sendTelegram = Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);
-  if (!sendEmail && !sendTelegram) return;
+  const doEmail = Boolean(prefs.emailEnabled) && Boolean(emailTo);
+  const doTelegram = Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);
+  if (!doEmail && !doTelegram) return;
 
   let snap: Awaited<ReturnType<typeof fetchMarketSnapshot>>;
   try {
     snap = await fetchMarketSnapshot();
-  } catch (err) {
-    console.error("Market digest fetch failed:", err);
+  } catch {
     return;
   }
 
-  const pairSummary = user.monitoredPairs.map((p) => `${p.collateralSymbol}/${p.debtSymbol}`).join(", ");
-  const yieldLine = prefs.notifyYield ? "\nYield: review Vesu lending rates for your pairs in the app." : "";
-
+  const pairSummary = user.monitoredPairs
+    .map((p: any) => `${p.collateralSymbol}/${p.debtSymbol}`)
+    .join(", ");
+  const yieldLine = prefs.notifyYield
+    ? "\nYield: review Vesu lending rates for your pairs in the app."
+    : "";
   const btcChange =
-    snap.btc24h != null ? ` (${snap.btc24h >= 0 ? "+" : ""}${snap.btc24h.toFixed(2)}% 24h)` : "";
+    snap.btc24h != null
+      ? ` (${snap.btc24h >= 0 ? "+" : ""}${snap.btc24h.toFixed(2)}% 24h)`
+      : "";
   const starkChange =
-    snap.stark24h != null ? ` (${snap.stark24h >= 0 ? "+" : ""}${snap.stark24h.toFixed(2)}% 24h)` : "";
+    snap.stark24h != null
+      ? ` (${snap.stark24h >= 0 ? "+" : ""}${snap.stark24h.toFixed(2)}% 24h)`
+      : "";
 
   const msg = `BTC Health — market snapshot
 BTC $${snap.btc.toLocaleString("en-US", { maximumFractionDigits: 0 })}${btcChange}
 STRK $${snap.stark.toFixed(4)}${starkChange}
 Your pairs: ${pairSummary || "—"}${yieldLine}`;
 
-  if (sendEmail && emailTo) {
+  if (doEmail && emailTo) {
     await resend.emails
       .send({
         from: "BTC Monitor <alerts@btcmonitor.app>",
@@ -115,37 +106,36 @@ Your pairs: ${pairSummary || "—"}${yieldLine}`;
         subject: "BTC Health — market snapshot",
         text: msg,
       })
-      .catch((e) => console.error("Resend market digest error:", e));
+      .catch(() => undefined);
   }
 
-  if (sendTelegram && user.telegramChatId) {
-    await bot.sendMessage(user.telegramChatId, msg).catch((e) => console.error("Telegram market digest error:", e));
+  if (doTelegram && user.telegramChatId) {
+    await sendTelegram(user.telegramChatId, msg);
   }
 
   await prisma.alertPreferences.update({
     where: { userId: user.id },
     data: { lastMarketDigestAt: new Date() },
   });
-
-  console.log(`Market digest sent for ${user.id}`);
 }
 
 async function checkUserPositions(params: {
   user: any;
   tokens: Record<string, any>;
   serverWallet: any;
+  resend: Resend;
+  errors: string[];
 }) {
-  const { user, tokens, serverWallet } = params;
+  const { user, tokens, serverWallet, resend, errors } = params;
   const prefs = user.alertPreferences;
-  if (!prefs || !user.walletAddress) return;
-  if (!user.monitoredPairs?.length) return;
+  if (!prefs || !user.walletAddress || !user.monitoredPairs?.length) return;
 
   const now = Date.now();
 
   for (const pair of user.monitoredPairs) {
     try {
-      const collateralToken = (tokens as any)[pair.collateralSymbol];
-      const debtToken = (tokens as any)[pair.debtSymbol];
+      const collateralToken = tokens[pair.collateralSymbol];
+      const debtToken = tokens[pair.debtSymbol];
       if (!collateralToken || !debtToken) continue;
 
       const health = await serverWallet.lending().getHealth({
@@ -156,24 +146,19 @@ async function checkUserPositions(params: {
 
       const colVal = Number(health.collateralValue);
       const dbtVal = Number(health.debtValue);
-
-      // No debt = no risk.
       if (!Number.isFinite(dbtVal) || dbtVal === 0) continue;
 
       const ratio = colVal / dbtVal;
-
-      let level: "warning" | "danger" | "critical" | null = null;
       const warningThreshold = prefs.warningThreshold.toNumber();
       const dangerThreshold = prefs.dangerThreshold.toNumber();
       const criticalThreshold = prefs.criticalThreshold.toNumber();
 
+      let level: "warning" | "danger" | "critical" | null = null;
       if (ratio < criticalThreshold) level = "critical";
       else if (ratio < dangerThreshold) level = "danger";
       else if (ratio < warningThreshold) level = "warning";
-
       if (!level) continue;
 
-      // Cooldown check per position+level.
       const recent = await prisma.alert.findFirst({
         where: {
           userId: user.id,
@@ -185,14 +170,6 @@ async function checkUserPositions(params: {
       });
       if (recent) continue;
 
-      let autoprotectionNote: string | null = null;
-      const isAutoProtectEligible =
-        level === "critical" &&
-        Boolean(prefs.autoProtectEnabled) &&
-        pair.collateralSymbol === "WBTC" &&
-        pair.debtSymbol === "USDC" &&
-        user.monitoringEnabled === true;
-
       const emoji = level === "critical" ? "🚨" : level === "danger" ? "🔴" : "⚠️";
       let msg = `${emoji} Your ${pair.collateralSymbol}/${pair.debtSymbol} position health is ${ratio.toFixed(3)}. ${
         level === "critical"
@@ -200,42 +177,50 @@ async function checkUserPositions(params: {
           : "Consider adding collateral or repaying debt."
       }`;
 
+      // Auto-protect: attempt gasless repay for critical WBTC/USDC positions.
+      const isAutoProtectEligible =
+        level === "critical" &&
+        Boolean(prefs.autoProtectEnabled) &&
+        pair.collateralSymbol === "WBTC" &&
+        pair.debtSymbol === "USDC" &&
+        user.monitoringEnabled === true;
+
       if (isAutoProtectEligible) {
+        let note: string;
         try {
           const position = await serverWallet.lending().getPosition({
             collateralToken,
             debtToken,
             user: user.walletAddress,
           });
-
           const debtAmountBase = (position as any).debtAmount ?? BigInt(0);
           if (debtAmountBase <= BigInt(0)) {
-            autoprotectionNote = "Auto-protect skipped: no debt detected.";
+            note = "Auto-protect skipped: no debt detected.";
           } else {
-            const repayAmountBase = (debtAmountBase * BigInt(10)) / BigInt(100); // 10%
+            const repayAmountBase = (debtAmountBase * BigInt(10)) / BigInt(100);
             if (repayAmountBase <= BigInt(0)) {
-              autoprotectionNote = "Auto-protect skipped: repay amount is too small.";
+              note = "Auto-protect skipped: repay amount too small.";
             } else {
               const privy = getPrivyClient();
               const privyWallet = await privy.wallets().get(user.id);
-              const publicKey = (privyWallet as any)?.publicKey ?? (privyWallet as any)?.public_key;
-
+              const publicKey =
+                (privyWallet as any)?.publicKey ?? (privyWallet as any)?.public_key;
               const paymaster = AVNU_PAYMASTER_API_KEY
                 ? { headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY } }
                 : undefined;
-
               const sdk = new StarkZap({
-                network: workerNetworkName,
+                network: starkZapNetworkName(getMonitorWorkerNetwork()),
                 paymaster,
               });
-
               const userWallet = await sdk.connectWallet({
                 account: {
                   signer: new PrivySigner({
                     walletId: user.id,
                     publicKey,
                     rawSign: async (walletId: string, messageHash: string) => {
-                      const raw = await privy.wallets().rawSign(walletId, { params: { hash: messageHash } });
+                      const raw = await privy
+                        .wallets()
+                        .rawSign(walletId, { params: { hash: messageHash } });
                       return raw.signature;
                     },
                   }),
@@ -244,48 +229,35 @@ async function checkUserPositions(params: {
                 accountAddress: user.walletAddress,
                 feeMode: "sponsored",
               });
-
               await userWallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" });
-
               const userUsdcBal = await userWallet.balanceOf(debtToken);
               const userUsdcBalBase = userUsdcBal.toBase();
               const repayCappedBase =
                 repayAmountBase > userUsdcBalBase ? userUsdcBalBase : repayAmountBase;
-
               if (repayCappedBase <= BigInt(0)) {
-                autoprotectionNote = "Auto-protect skipped: insufficient USDC balance in the wallet.";
+                note = "Auto-protect skipped: insufficient USDC balance.";
               } else {
                 const amount = Amount.fromRaw(repayCappedBase, debtToken);
-                const tx = await userWallet.lending().repay(
-                  {
-                    collateralToken,
-                    debtToken,
-                    amount,
-                  },
-                  { feeMode: "sponsored" },
-                );
-
+                const tx = await userWallet
+                  .lending()
+                  .repay({ collateralToken, debtToken, amount }, { feeMode: "sponsored" });
                 await tx.wait();
-                autoprotectionNote = `Auto-protect executed: repaid ~10% of debt. Tx: ${tx.hash}`;
+                note = `Auto-protect executed: repaid ~10% of debt. Tx: ${tx.hash}`;
               }
             }
           }
         } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          autoprotectionNote = `Auto-protect failed (skipped): ${reason}`;
+          note = `Auto-protect failed: ${err instanceof Error ? err.message : String(err)}`;
         }
-
-        if (autoprotectionNote) {
-          msg = `${msg}\n${autoprotectionNote}`;
-        }
+        msg = `${msg}\n${note!}`;
       }
 
       const wantNotify = wantHealthNotification(level, prefs);
       const emailTo = notifyEmailTo(prefs, user);
-      const sendEmail = wantNotify && Boolean(prefs.emailEnabled) && Boolean(emailTo);
-      const sendTelegram = wantNotify && Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);
+      const doEmail = wantNotify && Boolean(prefs.emailEnabled) && Boolean(emailTo);
+      const doTelegram = wantNotify && Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);
 
-      if (sendEmail && emailTo) {
+      if (doEmail && emailTo) {
         await resend.emails
           .send({
             from: "BTC Monitor <alerts@btcmonitor.app>",
@@ -293,11 +265,11 @@ async function checkUserPositions(params: {
             subject: `${emoji} Position Alert: ${pair.collateralSymbol}/${pair.debtSymbol}`,
             text: msg,
           })
-          .catch((e) => console.error("Resend send error:", e));
+          .catch(() => undefined);
       }
 
-      if (sendTelegram && user.telegramChatId) {
-        await bot.sendMessage(user.telegramChatId, msg).catch((e) => console.error("Telegram send error:", e));
+      if (doTelegram && user.telegramChatId) {
+        await sendTelegram(user.telegramChatId, msg);
       }
 
       await prisma.alert.create({
@@ -308,61 +280,73 @@ async function checkUserPositions(params: {
           level,
           healthRatio: new Prisma.Decimal(ratio),
           message: msg,
-          emailSent: sendEmail,
-          telegramSent: sendTelegram,
+          emailSent: doEmail,
+          telegramSent: doTelegram,
         },
       });
-
-      console.log(`Alert sent: ${level} for ${user.id} on ${pair.collateralSymbol}/${pair.debtSymbol}`);
     } catch (err) {
-      console.error(`Error checking ${pair.collateralSymbol}/${pair.debtSymbol} for ${user.id}:`, err);
+      errors.push(
+        `${pair.collateralSymbol}/${pair.debtSymbol}@${user.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 }
 
-cron.schedule("* * * * *", async () => {
-  console.log("Monitor tick:", new Date().toISOString(), "network:", workerNetworkName);
-
-  if (!SERVER_KEY) {
-    console.error("MONITOR_PRIVATE_KEY not set. Monitor worker cannot run.");
-    return;
+export async function GET(req: Request) {
+  // Vercel Cron sends Authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers.get("authorization");
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now = new Date();
-
-  const users = await prisma.user.findMany({
-    where: {
-      OR: [{ monitoringEnabled: true }, { mutedUntil: { lt: now } }],
-    },
-    include: {
-      alertPreferences: true,
-      monitoredPairs: true,
-    },
-  });
-
-  const sdk = new StarkZap({ network: workerNetworkName });
-  const serverWallet = await sdk.connectWallet({
-    account: { signer: new StarkSigner(SERVER_KEY) },
-  });
-
-  const tokens = getPresets(serverWallet.getChainId());
-
-  for (const user of users) {
-    if (
-      user.monitoringEnabled === false &&
-      user.mutedUntil &&
-      user.mutedUntil.getTime() > Date.now()
-    ) {
-      continue;
-    }
-
-    if (!user.alertPreferences || !user.monitoredPairs?.length) {
-      await maybeSendMarketDigest(user);
-      continue;
-    }
-    await checkUserPositions({ user, tokens, serverWallet });
-    await maybeSendMarketDigest(user);
+  if (!process.env.MONITOR_PRIVATE_KEY) {
+    return NextResponse.json({ error: "MONITOR_PRIVATE_KEY not configured" }, { status: 500 });
   }
-});
 
-console.log("Monitor worker started.");
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const workerNetworkName = starkZapNetworkName(getMonitorWorkerNetwork());
+  const errors: string[] = [];
+  let usersChecked = 0;
+
+  try {
+    const now = new Date();
+    const users = await prisma.user.findMany({
+      where: { OR: [{ monitoringEnabled: true }, { mutedUntil: { lt: now } }] },
+      include: { alertPreferences: true, monitoredPairs: true },
+      take: 100,
+    });
+
+    const sdk = new StarkZap({ network: workerNetworkName });
+    const serverWallet = await sdk.connectWallet({
+      account: { signer: new StarkSigner(process.env.MONITOR_PRIVATE_KEY!) },
+    });
+    const tokens = getPresets(serverWallet.getChainId());
+
+    for (const user of users) {
+      if (
+        user.monitoringEnabled === false &&
+        user.mutedUntil &&
+        user.mutedUntil.getTime() > Date.now()
+      ) {
+        continue;
+      }
+      usersChecked++;
+      await checkUserPositions({ user, tokens, serverWallet, resend, errors });
+      await maybeSendMarketDigest(user, resend);
+    }
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Monitor error" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    usersChecked,
+    errors: errors.slice(0, 10),
+    timestamp: new Date().toISOString(),
+  });
+}
