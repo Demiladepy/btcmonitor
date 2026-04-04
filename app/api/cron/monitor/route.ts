@@ -295,10 +295,13 @@ async function checkUserPositions(params: {
 }
 
 export async function GET(req: Request) {
-  // Vercel Cron sends Authorization: Bearer <CRON_SECRET>
-  const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Vercel Cron sends Authorization: Bearer <CRON_SECRET>.
+  // Skip auth in development so the test button works without exposing the secret.
+  if (process.env.NODE_ENV === "production" && process.env.CRON_SECRET) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   if (!process.env.MONITOR_PRIVATE_KEY) {

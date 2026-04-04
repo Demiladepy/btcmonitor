@@ -7,11 +7,14 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient() {
   const raw = process.env.DATABASE_URL;
-  const connectionString = normalizeDatabaseUrl(raw);
+  const normalized = normalizeDatabaseUrl(raw);
 
-  // Pass a pre-built pg.Pool so ssl options are guaranteed to reach the driver.
-  // Passing a config object with connectionString + ssl can conflict when the URL
-  // already contains sslmode=require — pg merges them unpredictably.
+  // Strip sslmode from the URL — pg parses it and sets ssl:true, which then
+  // overrides the explicit ssl object below. We own SSL entirely via the pool config.
+  const parsed = new URL(normalized);
+  parsed.searchParams.delete("sslmode");
+  const connectionString = parsed.toString();
+
   const pool = new pg.Pool({
     connectionString,
     connectionTimeoutMillis: 15_000,
