@@ -190,9 +190,7 @@ export default function Dashboard() {
 
     const fetchPrices = async () => {
       try {
-        const res = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,starknet&vs_currencies=usd",
-        );
+        const res = await fetch("/api/prices");
         const data = await res.json();
         if (cancelled) return;
 

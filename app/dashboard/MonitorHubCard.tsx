@@ -10,6 +10,7 @@ type Props = {
 export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notifyContactEmail, setNotifyContactEmail] = useState("");
   const [emailEnabled, setEmailEnabled] = useState(true);
@@ -78,6 +79,8 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to save");
       await load();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -175,6 +178,7 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
           )}
 
           {error && <p className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">{error}</p>}
+          {saved && <p className="text-sm text-green-700 bg-green-50 border border-green-200 p-2 rounded-lg">Settings saved.</p>}
 
           <button
             type="button"
