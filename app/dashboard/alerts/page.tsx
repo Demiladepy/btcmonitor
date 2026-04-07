@@ -67,6 +67,8 @@ export default function AlertsPlaceholderPage() {
   const [walletId, setWalletId] = useState<string | null>(null);
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [botRegistering, setBotRegistering] = useState(false);
+  const [botRegResult, setBotRegResult] = useState<string | null>(null);
 
   useEffect(() => {
     setWalletId(localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY));
@@ -220,6 +222,21 @@ export default function AlertsPlaceholderPage() {
     }
   }, [loadHistory]);
 
+  const handleRegisterBot = useCallback(async () => {
+    setBotRegistering(true);
+    setBotRegResult(null);
+    try {
+      const res = await fetch("/api/notifications/telegram/setup", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Registration failed");
+      setBotRegResult(`Webhook registered: ${data.webhookUrl}`);
+    } catch (err: unknown) {
+      setBotRegResult(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBotRegistering(false);
+    }
+  }, []);
+
   const copyTelegramLink = useCallback(async () => {
     if (!telegramLink) return;
     try {
@@ -357,7 +374,7 @@ export default function AlertsPlaceholderPage() {
               </div>
 
               {telegramEnabled ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 text-sm font-semibold">
                     Connected ✓
                   </span>
@@ -367,6 +384,19 @@ export default function AlertsPlaceholderPage() {
                       <p className="font-mono text-sm">{telegramChatId}</p>
                     </div>
                   )}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm space-y-1">
+                    <p className="font-semibold text-gray-700 mb-2">Bot commands</p>
+                    {[
+                      ["/status", "Check your current health ratios"],
+                      ["/repay", "Trigger emergency 10% repay (auto-protect must be on)"],
+                      ["/mute", "Silence alerts for 60 minutes"],
+                    ].map(([cmd, desc]) => (
+                      <div key={cmd} className="flex gap-2">
+                        <span className="font-mono text-amber-700 w-20 shrink-0">{cmd}</span>
+                        <span className="text-gray-600">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -398,6 +428,28 @@ export default function AlertsPlaceholderPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm space-y-3">
+            <div>
+              <p className="font-semibold text-gray-900">Register Telegram bot webhook</p>
+              <p className="text-sm text-gray-600">
+                Run this once after deploying to Vercel so Telegram can deliver messages to the bot.
+              </p>
+            </div>
+            {botRegResult && (
+              <p className={`text-sm rounded-lg p-2 ${botRegResult.startsWith("Webhook") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                {botRegResult}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleRegisterBot}
+              disabled={botRegistering}
+              className="h-10 px-5 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+            >
+              {botRegistering ? "Registering…" : "Register webhook"}
+            </button>
           </div>
 
           <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm space-y-4">

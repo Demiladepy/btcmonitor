@@ -11,6 +11,7 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notifyContactEmail, setNotifyContactEmail] = useState("");
   const [emailEnabled, setEmailEnabled] = useState(true);
@@ -80,7 +81,7 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
       if (!res.ok) throw new Error(data?.error || "Failed to save");
       await load();
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      setEditing(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -121,7 +122,40 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
+      ) : saved && !editing ? (
+        /* ── Saved summary view ── */
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2 text-sm">
+            <span className="px-3 py-1 rounded-full bg-white border border-amber-200 text-amber-900 font-medium">
+              {notifyContactEmail || privyEmail || "No email set"}
+            </span>
+            {emailEnabled && (
+              <span className="px-3 py-1 rounded-full bg-sky-50 border border-sky-200 text-sky-800 font-medium">Email ✓</span>
+            )}
+            {telegramEnabled && (
+              <span className="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-medium">Telegram ✓</span>
+            )}
+            {notifyPositions && (
+              <span className="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs">Position health</span>
+            )}
+            {notifyLiquidation && (
+              <span className="px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-800 text-xs">Liquidation risk</span>
+            )}
+            {notifyMarket && (
+              <span className="px-3 py-1 rounded-full bg-gray-100 border border-gray-200 text-gray-700 text-xs">Market snapshots</span>
+            )}
+          </div>
+          <p className="text-xs text-green-700 font-medium">Settings saved ✓</p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs text-amber-600 hover:text-amber-800 font-semibold underline"
+          >
+            Edit settings
+          </button>
+        </div>
       ) : (
+        /* ── Edit form ── */
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="notify-email">
@@ -178,16 +212,26 @@ export function MonitorHubCard({ walletId, telegramHint = "dashboard" }: Props) 
           )}
 
           {error && <p className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">{error}</p>}
-          {saved && <p className="text-sm text-green-700 bg-green-50 border border-green-200 p-2 rounded-lg">Settings saved.</p>}
 
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save notification settings"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save notification settings"}
+            </button>
+            {editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

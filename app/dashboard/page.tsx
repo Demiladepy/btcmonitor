@@ -427,6 +427,17 @@ export default function Dashboard() {
                         <p className="text-gray-500">Debt</p>
                         <p className="font-semibold">{pos.debtValue}</p>
                       </div>
+                      {pos.collateral === "WBTC" && btcUsd !== null && Number.isFinite(pos.healthRatio) && pos.healthRatio > 0 && (
+                        <div className="col-span-2 mt-1 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                          <p className="text-xs text-amber-700 font-medium">Liquidation price</p>
+                          <p className="text-lg font-bold text-amber-900">
+                            ${Math.round(btcUsd / pos.healthRatio).toLocaleString("en-US")}
+                          </p>
+                          <p className="text-xs text-amber-700/80">
+                            BTC must drop {((1 - 1 / pos.healthRatio) * 100).toFixed(1)}% from current ${btcUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
