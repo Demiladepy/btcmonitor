@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { Providers } from "./providers";
 import { WalletProvider } from "@/lib/wallet-context";
 
 export const metadata: Metadata = {
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${plusJakarta.className} bg-white text-gray-900`}>
-        <WalletProvider>{children}</WalletProvider>
+        {/* PrivyProvider must wrap WalletProvider so usePrivy() works inside it */}
+        <Providers>
+          <WalletProvider>{children}</WalletProvider>
+        </Providers>
       </body>
     </html>
   );

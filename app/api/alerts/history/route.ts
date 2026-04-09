@@ -24,12 +24,17 @@ export async function GET(req: Request) {
         debtSymbol: a.debtSymbol,
         level: a.level,
         healthRatio: a.healthRatio.toNumber(),
+        liquidationPrice: a.liquidationPrice ?? null,
+        currentPrice: a.currentPrice ?? null,
+        distancePct: a.distancePct ?? null,
         emailSent: a.emailSent,
         telegramSent: a.telegramSent,
       })),
     });
   } catch (err: unknown) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to load history" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to load history" },
+      { status: 500 },
+    );
   }
 }
-

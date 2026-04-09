@@ -4,28 +4,23 @@ export type BtcHealthNetwork = "sepolia" | "mainnet";
 
 export const BTC_HEALTH_NETWORK_STORAGE_KEY = "btc-health-network";
 
-/** Browser wallet id (existing app key; keep stable for stored users). */
+/** Browser wallet id / wallet address — stable key stored in localStorage. */
 export const BTC_MONITOR_WALLET_ID_KEY = "btcmonitor_wallet_id";
 
 export const BTC_MONITOR_WALLET_ADDRESS_KEY = "btcmonitor_wallet_address";
 
+export const BTC_MONITOR_CONNECTION_METHOD_KEY = "btcmonitor_connection_method";
+
 export const BTC_HEALTH_NETWORK_HEADER = "x-btc-health-network";
 
-/** Dev → Sepolia; production build → Mainnet (override with localStorage on the client). */
+/** Always mainnet. Sepolia is no longer supported. */
 export function defaultBtcHealthNetwork(): BtcHealthNetwork {
-  return process.env.NODE_ENV === "production" ? "mainnet" : "sepolia";
+  return "mainnet";
 }
 
-/** Client: effective network from localStorage override or build default. */
+/** Client: always mainnet. */
 export function getEffectiveBtcHealthNetwork(): BtcHealthNetwork {
-  if (typeof window === "undefined") return defaultBtcHealthNetwork();
-  try {
-    const raw = window.localStorage.getItem(BTC_HEALTH_NETWORK_STORAGE_KEY);
-    if (raw === "mainnet" || raw === "sepolia") return raw;
-  } catch {
-    /* ignore */
-  }
-  return defaultBtcHealthNetwork();
+  return "mainnet";
 }
 
 export function networkToChainId(network: BtcHealthNetwork): ChainId {
@@ -36,9 +31,7 @@ export function starkZapNetworkName(network: BtcHealthNetwork): "mainnet" | "sep
   return network === "mainnet" ? "mainnet" : "sepolia";
 }
 
-/** Worker / server: env MONITOR_STARKNET_NETWORK=mainnet|sepolia overrides NODE_ENV default. */
+/** Worker / server: always mainnet. */
 export function getMonitorWorkerNetwork(): BtcHealthNetwork {
-  const raw = process.env.MONITOR_STARKNET_NETWORK?.trim().toLowerCase();
-  if (raw === "mainnet" || raw === "sepolia") return raw;
-  return defaultBtcHealthNetwork();
+  return "mainnet";
 }

@@ -2,7 +2,7 @@
  * Dashboard data sources — override via env in `.env` / Vercel (no literals scattered in UI).
  *
  * `NEXT_PUBLIC_VESU_POSITION_PAIRS` — comma-separated collateral/debt pairs, e.g. `WBTC/USDC,ETH/USDC`
- * `NEXT_PUBLIC_DASHBOARD_BALANCE_SYMBOLS` — comma-separated token symbols to show, e.g. `ETH,STRK,USDC,WBTC`
+ * `NEXT_PUBLIC_DASHBOARD_BALANCE_SYMBOLS` — comma-separated token symbols to show
  */
 
 export interface VesuPairConfig {
@@ -10,8 +10,9 @@ export interface VesuPairConfig {
   debt: string;
 }
 
-const DEFAULT_VESU_PAIRS = "WBTC/USDC,ETH/USDC";
-const DEFAULT_BALANCE_SYMBOLS = "ETH,STRK,USDC,WBTC";
+// All mainnet BTC/ETH pairs supported by Vesu
+const DEFAULT_VESU_PAIRS = "WBTC/USDC,WBTC/USDT,LBTC/USDC,TBTC/USDC,ETH/USDC,ETH/USDT";
+const DEFAULT_BALANCE_SYMBOLS = "ETH,STRK,USDC,WBTC,LBTC,TBTC";
 
 function parsePairs(raw: string): VesuPairConfig[] {
   return raw
@@ -44,3 +45,15 @@ export function getDashboardBalanceSymbols(): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/** Maps token symbol to CoinGecko price ID */
+export const COINGECKO_PRICE_IDS: Record<string, string> = {
+  WBTC: "bitcoin",
+  LBTC: "bitcoin",
+  TBTC: "bitcoin",
+  ETH: "ethereum",
+  STRK: "starknet",
+};
+
+/** All BTC-variant symbols — used for filtering Vesu markets */
+export const BTC_SYMBOLS = new Set(["WBTC", "LBTC", "TBTC", "SolvBTC"]);

@@ -1,22 +1,22 @@
 "use client";
 
-import {
-  BTC_MONITOR_WALLET_ID_KEY,
-  type BtcHealthNetwork,
-  networkToChainId,
-} from "@/lib/btc-health-network";
-import { useWallet } from "@/lib/wallet-context";
-import { chainDisplayLabel } from "@/lib/chain-label";
+import { BTC_MONITOR_WALLET_ID_KEY, BTC_MONITOR_CONNECTION_METHOD_KEY } from "@/lib/btc-health-network";
+import { useWallet, type ConnectionMethod } from "@/lib/wallet-context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function LandingPage() {
-  const { wallet, address, isConnecting, error, connect, disconnect, network, setNetwork } = useWallet();
+  const { wallet, address, isConnecting, error, connect, disconnect } = useWallet();
   const router = useRouter();
-  const [hasStoredWalletId, setHasStoredWalletId] = useState(false);
+  const [hasStoredWallet, setHasStoredWallet] = useState(false);
+  const [storedMethod, setStoredMethod] = useState<ConnectionMethod>("privy");
+  const [connectingMethod, setConnectingMethod] = useState<ConnectionMethod | null>(null);
 
   useEffect(() => {
-    setHasStoredWalletId(Boolean(typeof window !== "undefined" && localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY)));
+    const stored = typeof window !== "undefined" && localStorage.getItem(BTC_MONITOR_WALLET_ID_KEY);
+    const method = (localStorage.getItem(BTC_MONITOR_CONNECTION_METHOD_KEY) as ConnectionMethod) ?? "privy";
+    setHasStoredWallet(Boolean(stored));
+    setStoredMethod(method);
   }, [wallet, isConnecting]);
 
   useEffect(() => {
@@ -25,102 +25,152 @@ export default function LandingPage() {
     }
   }, [wallet, address, router]);
 
-  const clearStoredWallet = () => {
-    disconnect();
-    setHasStoredWalletId(false);
+  const handleConnect = async (method: ConnectionMethod) => {
+    setConnectingMethod(method);
+    try {
+      await connect(method);
+    } finally {
+      setConnectingMethod(null);
+    }
   };
 
-  const handleNetworkChange = (next: BtcHealthNetwork) => {
-    if (next === network) return;
-    if (wallet || hasStoredWalletId) {
-      const ok =
-        typeof window !== "undefined" &&
-        window.confirm(
-          "Switching network clears this browser’s saved wallet. You can create or connect again on the new network. Continue?",
-        );
-      if (!ok) return;
-    }
-    setNetwork(next);
-    setHasStoredWalletId(false);
+  const clearStoredWallet = () => {
+    disconnect();
+    setHasStoredWallet(false);
+  };
+
+  const methodLabel = (m: ConnectionMethod) => {
+    if (m === "privy") return "Email / Social";
+    if (m === "cartridge") return "Cartridge";
+    return "Argent / Braavos";
   };
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="max-w-md w-full text-center space-y-8">
-        <h1 className="text-5xl font-extrabold tracking-tight text-gray-900">
-          BTC Health <span className="text-amber-500">Monitor</span>
-        </h1>
-        <p className="text-xl text-gray-500 leading-relaxed">
-          Monitor your Vesu positions on Starknet.
-          <br />
-          Get alerts before liquidation.
-        </p>
-
-        <p className="text-sm text-gray-600 leading-relaxed">
-          Access uses a Starknet smart wallet (gasless deploy where supported). Add an email for Telegram in{" "}
-          <span className="font-medium text-gray-800">Dashboard → notifications</span>.
-        </p>
-
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <span className="text-gray-500">Network:</span>
-          <select
-            value={network}
-            onChange={(e) => handleNetworkChange(e.target.value as BtcHealthNetwork)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-900 font-medium"
-            aria-label="Starknet network"
-          >
-            <option value="sepolia">Sepolia (testnet)</option>
-            <option value="mainnet">Mainnet</option>
-          </select>
-          <span className="text-xs text-gray-400">{chainDisplayLabel(networkToChainId(network))}</span>
+        <div>
+          <h1 className="text-5xl font-extrabold tracking-tight text-gray-900">
+            BTC Health <span className="text-amber-500">Monitor</span>
+          </h1>
+          <p className="mt-4 text-xl text-gray-500 leading-relaxed">
+            Monitor your Vesu positions on Starknet.
+            <br />
+            Get alerts before liquidation.
+          </p>
         </div>
 
-        <div className="space-y-4 pt-4">
-          {hasStoredWalletId && !wallet ? (
-            <>
-              <button
-                type="button"
-                onClick={() => connect()}
-                disabled={isConnecting}
-                className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait"
-              >
-                {isConnecting ? "Connecting…" : "Continue to dashboard"}
-              </button>
-              <button
-                type="button"
-                onClick={clearStoredWallet}
-                disabled={isConnecting}
-                className="w-full h-12 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50"
-              >
-                Use a different wallet
-              </button>
-            </>
-          ) : (
+        <div className="inline-flex items-center gap-2 bg-green-50 border border-green-200 rounded-full px-4 py-1.5 text-sm font-medium text-green-800">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+          Gasless on Starknet Mainnet
+        </div>
+
+        {/* Returning user — quick reconnect */}
+        {hasStoredWallet && !wallet && (
+          <div className="space-y-3">
             <button
               type="button"
-              onClick={() => connect()}
+              onClick={() => handleConnect(storedMethod)}
               disabled={isConnecting}
               className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait"
-      >
-              {isConnecting ? "Connecting…" : "Create Starknet wallet"}
+            >
+              {isConnecting ? "Connecting…" : `Continue (${methodLabel(storedMethod)})`}
             </button>
-          )}
-
-          {wallet && (
             <button
               type="button"
-              onClick={disconnect}
-              className="w-full text-sm text-red-500 hover:text-red-700"
+              onClick={clearStoredWallet}
+              disabled={isConnecting}
+              className="w-full h-10 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50"
             >
-              Disconnect
+              Use a different wallet
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        {error && <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg">{error}</p>}
+        {/* New user — 3 connection options */}
+        {(!hasStoredWallet || wallet) && (
+          <div className="space-y-3">
+            {/* Option A: Privy — email / social */}
+            <button
+              type="button"
+              onClick={() => handleConnect("privy")}
+              disabled={isConnecting}
+              className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+            >
+              {connectingMethod === "privy" && isConnecting ? (
+                <>
+                  <span className="inline-block animate-spin rounded-full border-2 border-white border-t-transparent w-5 h-5" />
+                  Connecting…
+                </>
+              ) : (
+                <>
+                  <span className="text-xl">✉</span>
+                  Sign in with Email
+                </>
+              )}
+            </button>
 
-        <p className="text-sm text-gray-400 pt-6">
-          Gasless deploy via paymaster where configured · Vesu
+            {/* Option B: Cartridge — social / passkey */}
+            <button
+              type="button"
+              onClick={() => handleConnect("cartridge")}
+              disabled={isConnecting}
+              className="w-full h-14 bg-gray-900 hover:bg-gray-700 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+            >
+              {connectingMethod === "cartridge" && isConnecting ? (
+                <>
+                  <span className="inline-block animate-spin rounded-full border-2 border-white border-t-transparent w-5 h-5" />
+                  Connecting…
+                </>
+              ) : (
+                <>
+                  <span className="text-xl">🎮</span>
+                  Sign in with Google
+                  <span className="text-xs text-gray-400 ml-1">(Cartridge)</span>
+                </>
+              )}
+            </button>
+
+            {/* Option C: External — Argent / Braavos */}
+            <button
+              type="button"
+              onClick={() => handleConnect("external")}
+              disabled={isConnecting}
+              className="w-full h-14 border-2 border-amber-500 text-amber-700 text-lg font-semibold rounded-xl hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+            >
+              {connectingMethod === "external" && isConnecting ? (
+                <>
+                  <span className="inline-block animate-spin rounded-full border-2 border-amber-500 border-t-transparent w-5 h-5" />
+                  Opening wallet…
+                </>
+              ) : (
+                <>
+                  <span className="text-xl">🦊</span>
+                  Connect Argent / Braavos
+                </>
+              )}
+            </button>
+
+            {wallet && (
+              <button
+                type="button"
+                onClick={disconnect}
+                className="w-full text-sm text-red-500 hover:text-red-700 pt-1"
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 pt-2">
+          Email login creates a gasless Starknet wallet via Privy ·{" "}
+          Argent/Braavos users connect their existing wallet
         </p>
       </div>
     </main>
