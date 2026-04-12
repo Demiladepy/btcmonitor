@@ -4,15 +4,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
 import { getPrivyClient } from "@/lib/privy-server";
+import { getAvnuPaymasterConfig } from "@/lib/avnu-paymaster";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MARKET_DIGEST_MS = 6 * 60 * 60 * 1000;
-const AVNU_PAYMASTER_API_KEY =
-  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY ?? process.env.NEXT_PUBLIC_PAYMASTER_API_KEY;
-const AVNU_PAYMASTER_URL =
-  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_URL ?? "https://starknet.paymaster.avnu.fi";
 const MAX_LTV = 0.80; // Vesu typical max loan-to-value
 
 // ── Price helpers ─────────────────────────────────────────────────────────────
@@ -287,12 +284,7 @@ async function checkUserPositions(params: {
               const privyWalletId = user.privyWalletId ?? user.id;
               const privyWallet = await privy.wallets().get(privyWalletId);
               const publicKey = (privyWallet as any)?.publicKey ?? (privyWallet as any)?.public_key;
-              const paymaster = AVNU_PAYMASTER_API_KEY
-                ? {
-                    nodeUrl: AVNU_PAYMASTER_URL,
-                    headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY },
-                  }
-                : undefined;
+              const paymaster = getAvnuPaymasterConfig();
 
               const sdk = new StarkZap({ network: "mainnet", paymaster });
               const userWallet = await sdk.connectWallet({
@@ -479,12 +471,7 @@ export async function GET(req: Request) {
       take: 100,
     });
 
-    const paymaster = AVNU_PAYMASTER_API_KEY
-      ? {
-          nodeUrl: AVNU_PAYMASTER_URL,
-          headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY },
-        }
-      : undefined;
+    const paymaster = getAvnuPaymasterConfig();
 
     const sdk = new StarkZap({ network: "mainnet", paymaster });
     const serverWallet = await sdk.connectWallet({

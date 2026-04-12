@@ -4,11 +4,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPrivyClient } from "@/lib/privy-server";
 import { getMonitorWorkerNetwork, starkZapNetworkName } from "@/lib/btc-health-network";
+import { getAvnuPaymasterConfig } from "@/lib/avnu-paymaster";
 
 const telegramBotNetwork = starkZapNetworkName(getMonitorWorkerNetwork());
-
-const AVNU_PAYMASTER_API_KEY =
-  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY ?? process.env.NEXT_PUBLIC_PAYMASTER_API_KEY;
 
 async function sendTelegramMessage(chatId: number | string, text: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -278,9 +276,7 @@ export async function POST(req: Request) {
       const publicKey = (privyWallet as any)?.publicKey ?? (privyWallet as any)?.public_key;
       if (!publicKey) throw new Error("Could not resolve user's Privy public key");
 
-      const paymaster = AVNU_PAYMASTER_API_KEY
-        ? { headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY } }
-        : undefined;
+      const paymaster = getAvnuPaymasterConfig();
 
       const execSdk = new StarkZap({
         network: telegramBotNetwork,

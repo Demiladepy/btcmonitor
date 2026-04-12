@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 // Type-only imports — erased at compile time, zero bundle cost
 import type { WalletInterface } from "starkzap";
+import { getAvnuPaymasterConfig } from "@/lib/avnu-paymaster";
 import {
   BTC_MONITOR_WALLET_ID_KEY,
   BTC_MONITOR_WALLET_ADDRESS_KEY,
@@ -15,10 +16,6 @@ import {
 const WBTC_MAINNET = "0x03fe2b97c1fd336e750087d68b9b867997fd64a2661ff3ca5a7c771641e8e7ac";
 // Vesu Singleton mainnet (Cartridge session policies)
 const VESU_SINGLETON = "0x02545b2e5d519fc230e9cd781046d3a64e092114f07e44771e0d719d148725ef";
-
-const AVNU_PAYMASTER_API_KEY = process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY;
-const AVNU_PAYMASTER_URL =
-  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_URL ?? "https://starknet.paymaster.avnu.fi";
 
 export type ConnectionMethod = "privy" | "cartridge" | "external";
 
@@ -42,10 +39,7 @@ let sdkCache: any = null;
 async function getOrCreateSdk() {
   if (sdkCache) return sdkCache;
   const { StarkZap } = await import("starkzap");
-  const paymaster = AVNU_PAYMASTER_API_KEY
-    ? { nodeUrl: AVNU_PAYMASTER_URL, headers: { "x-paymaster-api-key": AVNU_PAYMASTER_API_KEY } }
-    : undefined;
-  sdkCache = new StarkZap({ network: "mainnet", paymaster });
+  sdkCache = new StarkZap({ network: "mainnet", paymaster: getAvnuPaymasterConfig() });
   return sdkCache;
 }
 

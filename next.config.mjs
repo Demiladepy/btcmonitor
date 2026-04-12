@@ -4,12 +4,25 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const peerStub = path.join(__dirname, "stubs", "starkzap-peer-stub.js");
 
+/** Prefer NEXT_PUBLIC_*; fall back to AVNU_API_KEY so one key works in the browser bundle. */
+const avnuPaymasterKeyForClient =
+  process.env.NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_PAYMASTER_API_KEY?.trim() ||
+  process.env.AVNU_API_KEY?.trim() ||
+  "";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
 
-  // Prevent browser-only packages from being bundled on the server
-  serverExternalPackages: ["starknetkit"],
+  // Next.js 14 — use experimental key (serverExternalPackages is Next 15+)
+  experimental: {
+    serverComponentsExternalPackages: ["starknetkit"],
+  },
+
+  env: {
+    NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY: avnuPaymasterKeyForClient,
+  },
 
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
