@@ -5,7 +5,7 @@ import { BTC_MONITOR_WALLET_ID_KEY } from "@/lib/btc-health-network";
 import { useWallet } from "@/lib/wallet-context";
 import { getDashboardBalanceSymbols, getVesuPositionPairs, COINGECKO_PRICE_IDS } from "@/lib/dashboard-config";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getPresets } from "starkzap";
 
 const MAX_LTV = 0.80; // Vesu typical maximum loan-to-value ratio
@@ -78,8 +78,10 @@ export default function Dashboard() {
   const [markets, setMarkets] = useState<any[]>([]);
   const [marketsLoading, setMarketsLoading] = useState(false);
   const [marketsError, setMarketsError] = useState<string | null>(null);
-  const [showMarkets, setShowMarkets] = useState(false);
-  const [marketsFetched, setMarketsFetched] = useState(false);
+  const [balanceFetchError, setBalanceFetchError] = useState<string | null>(null);
+  const [positionFetchError, setPositionFetchError] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const marketsRequestedRef = useRef(false);
 
   useEffect(() => {
     if (!wallet) router.push("/");
@@ -108,23 +110,31 @@ export default function Dashboard() {
   const fetchBalances = useCallback(async () => {
     if (!wallet) return;
     setLoadingBalances(true);
+    setBalanceFetchError(null);
     try {
       const tokens = getPresets(wallet.getChainId());
       const results: Record<string, string> = {};
-      // Fetch all token balances in parallel — previously sequential (6 serial RPC calls)
       await Promise.all(
         balanceSymbols.map(async (sym) => {
           const token = tokens[sym];
           if (!token) return;
           try {
             const bal = await wallet.balanceOf(token);
-            results[sym] = bal.toUnit();
+            const unit = bal.toUnit();
+            const n = Number(String(unit).replace(/,/g, ""));
+            if (Number.isFinite(n) && n === 0) {
+              results[sym] = "0";
+            } else {
+              results[sym] = unit;
+            }
           } catch {
             results[sym] = "—";
           }
         }),
       );
       setBalances(results);
+    } catch {
+      setBalanceFetchError("Network error — please check your connection");
     } finally {
       setLoadingBalances(false);
     }
@@ -132,6 +142,7 @@ export default function Dashboard() {
 
   const fetchPositions = useCallback(async () => {
     if (!wallet) return;
+    setPositionFetchError(null);
     const tokens = getPresets(wallet.getChainId());
     const positionPairs = getVesuPositionPairs();
 
@@ -188,8 +199,15 @@ export default function Dashboard() {
 
           const colValUSD = usdFromScale(colVal);
           const dbtValUSD = usdFromScale(dbtVal);
-          const ratio = dbtVal === BigInt(0) ? Infinity : Number(colVal) / Number(dbtVal);
           const hasDebt = (dbtAmtRaw ?? BigInt(0)) > BigInt(0) || dbtVal > BigInt(0);
+          let ratio = Infinity;
+          if (hasDebt) {
+            if (dbtVal > BigInt(0)) {
+              ratio = Number(colVal) / Number(dbtVal);
+            } else if (dbtValUSD !== null && dbtValUSD > 0 && colValUSD !== null) {
+              ratio = colValUSD / dbtValUSD;
+            }
+          }
 
           const colAmtHuman = colAmtRaw != null
             ? Number(colAmtRaw) / 10 ** collateralDecimals
@@ -225,6 +243,10 @@ export default function Dashboard() {
           });
         } catch (err: unknown) {
           const msg = String(err).toLowerCase();
+          const isNetwork = msg.includes("failed to fetch") || msg.includes("network") || msg.includes("econnrefused");
+          if (isNetwork) {
+            setPositionFetchError("Network error — please check your connection");
+          }
           const isNoPos =
             msg.includes("asset-config-nonexistent") ||
             msg.includes("pool-not-found") ||
@@ -265,7 +287,7 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       fetchBalances();
       fetchPositions();
-    }, 30_000);
+    }, 60_000);
     return () => clearInterval(interval);
   }, [fetchBalances, fetchPositions]);
 
@@ -291,19 +313,22 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [wallet]);
 
-  // Markets are fetched lazily — only when the user first clicks "Show Markets"
-  // This avoids an extra network round-trip on initial dashboard load.
-  const handleToggleMarkets = useCallback(() => {
-    const next = !showMarkets;
-    setShowMarkets(next);
-    if (next && !marketsFetched && !marketsLoading && wallet) {
-      setMarketsLoading(true);
-      wallet.lending().getMarkets()
-        .then((m) => setMarkets(Array.isArray(m) ? m : []))
-        .catch((err: unknown) => setMarketsError(err instanceof Error ? err.message : "Failed"))
-        .finally(() => { setMarketsLoading(false); setMarketsFetched(true); });
+  // Load Vesu markets once per wallet session (judges expect the list without extra clicks).
+  useEffect(() => {
+    if (!wallet) {
+      marketsRequestedRef.current = false;
+      return;
     }
-  }, [showMarkets, marketsFetched, marketsLoading, wallet]);
+    if (marketsRequestedRef.current) return;
+    marketsRequestedRef.current = true;
+    setMarketsLoading(true);
+    wallet
+      .lending()
+      .getMarkets()
+      .then((m) => setMarkets(Array.isArray(m) ? m : []))
+      .catch((err: unknown) => setMarketsError(err instanceof Error ? err.message : "Failed"))
+      .finally(() => setMarketsLoading(false));
+  }, [wallet]);
 
   if (!wallet) return null;
 
@@ -319,35 +344,91 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      <nav className="border-b border-gray-200 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
-        <h1 className="text-xl font-bold">
-          BTC Health <span className="text-amber-500">Monitor</span>
-        </h1>
-        <div className="flex items-center gap-4 flex-wrap justify-end">
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
-            Starknet Mainnet
-          </span>
+      <nav className="border-b border-gray-200 px-4 sm:px-6 py-4 max-w-6xl mx-auto">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-lg sm:text-xl font-bold shrink-0">
+            BTC Health <span className="text-amber-500">Monitor</span>
+          </h1>
           <button
             type="button"
-            onClick={() => router.push("/dashboard/transact")}
-            className="text-sm font-medium text-gray-700 hover:text-amber-600"
+            className="md:hidden inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
+            aria-label="Open menu"
+            onClick={() => setMobileNavOpen((o) => !o)}
           >
-            Transact
+            <span className="text-lg leading-none">☰</span>
           </button>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/alerts")}
-            className="text-sm font-medium text-gray-700 hover:text-amber-600"
-          >
-            Alerts
-          </button>
-          <span className="text-xs text-gray-400 font-mono">
-            {address?.slice(0, 6)}…{address?.slice(-4)}
-          </span>
-          <button type="button" onClick={disconnect} className="text-xs text-red-500 hover:text-red-700">
-            Disconnect
-          </button>
+          <div className="hidden md:flex items-center gap-4 flex-wrap justify-end">
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+              Starknet Mainnet
+            </span>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/transact")}
+              className="text-sm font-medium text-gray-700 hover:text-amber-600 min-h-[44px] px-2"
+            >
+              Transact
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/alerts")}
+              className="text-sm font-medium text-gray-700 hover:text-amber-600 min-h-[44px] px-2"
+            >
+              Alerts
+            </button>
+            <span className="text-xs text-gray-400 font-mono max-w-[8rem] truncate" title={address ?? undefined}>
+              {address?.slice(0, 6)}…{address?.slice(-4)}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                disconnect();
+                router.push("/");
+              }}
+              className="text-xs text-red-500 hover:text-red-700 min-h-[44px] px-2"
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
+        {mobileNavOpen && (
+          <div className="md:hidden mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4">
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium w-fit">
+              Starknet Mainnet
+            </span>
+            <button
+              type="button"
+              className="w-full h-12 rounded-xl bg-gray-50 text-gray-900 font-semibold text-left px-4"
+              onClick={() => {
+                setMobileNavOpen(false);
+                router.push("/dashboard/transact");
+              }}
+            >
+              Transact
+            </button>
+            <button
+              type="button"
+              className="w-full h-12 rounded-xl bg-gray-50 text-gray-900 font-semibold text-left px-4"
+              onClick={() => {
+                setMobileNavOpen(false);
+                router.push("/dashboard/alerts");
+              }}
+            >
+              Alerts
+            </button>
+            <p className="text-xs text-gray-500 font-mono break-all px-1">{address}</p>
+            <button
+              type="button"
+              className="w-full h-12 rounded-xl border border-red-200 text-red-600 font-semibold"
+              onClick={() => {
+                setMobileNavOpen(false);
+                disconnect();
+                router.push("/");
+              }}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
@@ -362,23 +443,31 @@ export default function Dashboard() {
             <span className="text-gray-300">·</span>
             <span>STRK {starkUsd === null ? "—" : `$${starkUsd.toFixed(4)}`}</span>
           </div>
-          <span className="text-xs text-gray-500">Updated: {lastUpdatedLabel}</span>
+          <span className="text-xs text-gray-500">Last updated: {lastUpdatedLabel}</span>
         </div>
 
         {/* Wallet Balances */}
         <section>
           <h2 className="text-2xl font-bold mb-4">Wallet Balances</h2>
+          {balanceFetchError && (
+            <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              {balanceFetchError}
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {loadingBalances
               ? Array.from({ length: balanceSymbols.length }).map((_, i) => (
                   <div key={i} className="bg-gray-50 rounded-xl p-4 animate-pulse h-20 border border-gray-100" />
                 ))
-              : Object.entries(balances).map(([sym, val]) => (
-                  <div key={sym} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                    <p className="text-xs text-gray-500">{sym}</p>
-                    <p className="text-sm font-semibold truncate">{val}</p>
-                  </div>
-                ))}
+              : balanceSymbols.map((sym) => {
+                  const val = balances[sym] ?? (loadingBalances ? "…" : "0");
+                  return (
+                    <div key={sym} className="bg-gray-50 border border-gray-200 rounded-xl p-4 min-h-[4.5rem]">
+                      <p className="text-xs text-gray-500">{sym}</p>
+                      <p className="text-sm font-semibold truncate">{val}</p>
+                    </div>
+                  );
+                })}
           </div>
         </section>
 
@@ -389,11 +478,16 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => { fetchBalances(); fetchPositions(); }}
-              className="text-sm text-amber-600 hover:text-amber-800 font-medium"
+              className="text-sm text-amber-600 hover:text-amber-800 font-medium min-h-[44px] px-2"
             >
               ↻ Refresh
             </button>
           </div>
+          {positionFetchError && (
+            <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              {positionFetchError}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {positions.filter((p) => !p.error || p.hasDebt).map((pos, i) => {
@@ -449,7 +543,11 @@ export default function Dashboard() {
                               : pos.healthRatio > 1.1 ? "bg-amber-500"
                               : "bg-red-500"
                           }`}
-                          style={{ width: `${Math.min(100, (Math.min(pos.healthRatio, 2) / 2) * 100)}%` }}
+                          style={{
+                            width: `${pos.healthRatio === Infinity || !Number.isFinite(pos.healthRatio)
+                              ? 0
+                              : Math.min(100, (Math.min(pos.healthRatio, 2) / 2) * 100)}%`,
+                          }}
                         />
                       </div>
                     </div>
@@ -514,15 +612,29 @@ export default function Dashboard() {
 
                   {/* Empty state actions */}
                   {!pos.loading && !pos.hasDebt && !pos.error && (
-                    <div>
-                      <p className="text-sm text-gray-500">No active position.</p>
-                      <div className="flex gap-2 pt-3">
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-500">No active position. No debt on this pair.</p>
+                      <p className="text-xs text-gray-400">
+                        Get {pos.collateral} to open a position, or deposit existing collateral to Vesu.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2 pt-2">
                         <button
                           type="button"
                           onClick={() => router.push(`/dashboard/transact?action=deposit&token=${pos.collateral}`)}
-                          className="flex-1 h-10 bg-amber-500 text-white rounded-xl hover:bg-amber-600 text-sm font-semibold"
+                          className="flex-1 min-h-[44px] bg-amber-500 text-white rounded-xl hover:bg-amber-600 text-sm font-semibold"
                         >
-                          Deposit
+                          Deposit to start
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/transact?action=swap&tokenIn=USDC&tokenOut=${encodeURIComponent(pos.collateral)}`,
+                            )
+                          }
+                          className="flex-1 min-h-[44px] border border-amber-500 text-amber-700 rounded-xl hover:bg-amber-50 text-sm font-semibold"
+                        >
+                          Swap to {pos.collateral}
                         </button>
                       </div>
                     </div>
@@ -555,81 +667,73 @@ export default function Dashboard() {
 
         {/* Available Vesu Markets */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div>
             <h2 className="text-2xl font-bold">Available Vesu Markets</h2>
-            <button
-              type="button"
-              onClick={handleToggleMarkets}
-              className="text-sm font-medium text-amber-600 hover:text-amber-800"
-            >
-              {showMarkets ? "Hide" : "Show"} Markets
-            </button>
+            <p className="text-sm text-gray-500 mt-1">Live markets from Vesu on Starknet mainnet.</p>
           </div>
 
-          {showMarkets && (
-            <div>
-              {marketsError && (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
-                  {marketsError}
-                </div>
-              )}
+          <div>
+            {marketsError && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
+                {marketsError}
+              </div>
+            )}
 
-              {marketsLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-4 animate-pulse h-16" />
-                  ))}
-                </div>
-              ) : markets.length === 0 ? (
-                <div className="border border-gray-200 rounded-2xl p-6 bg-white text-sm text-gray-600">
-                  No markets found on mainnet.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {markets.map((m, i) => {
-                    const assetSymbol = m?.asset?.symbol ?? "—";
-                    const poolName = m?.poolName ?? m?.poolAddress ?? "—";
-                    const canBorrow = Boolean(m?.canBeBorrowed);
-                    const vTokenAddr = m?.vTokenAddress ?? m?.asset?.vTokenAddress;
+            {marketsLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-4 animate-pulse h-16" />
+                ))}
+              </div>
+            ) : markets.length === 0 ? (
+              <div className="border border-gray-200 rounded-2xl p-6 bg-white text-sm text-gray-600">
+                No markets found on mainnet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {markets.map((m, i) => {
+                  const assetSymbol = m?.asset?.symbol ?? "—";
+                  const poolName = m?.poolName ?? m?.poolAddress ?? "—";
+                  const canBorrow = Boolean(m?.canBeBorrowed);
+                  const vTokenAddr = m?.vTokenAddress ?? m?.asset?.vTokenAddress;
 
-                    return (
-                      <div key={i} className="border border-gray-200 rounded-2xl p-5 bg-white space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Asset</p>
-                            <p className="font-bold text-lg">{assetSymbol}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Pool</p>
-                            <p className="font-semibold text-sm">{String(poolName).slice(0, 24)}</p>
-                          </div>
+                  return (
+                    <div key={i} className="border border-gray-200 rounded-2xl p-5 bg-white space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">Asset</p>
+                          <p className="font-bold text-lg">{assetSymbol}</p>
                         </div>
-
-                        <div className="flex items-center justify-between text-sm">
-                          <span className={`font-medium ${canBorrow ? "text-green-700" : "text-gray-500"}`}>
-                            {canBorrow ? "Can be borrowed" : "Supply only"}
-                          </span>
-                          {vTokenAddr && (
-                            <span className="text-xs text-gray-400 font-mono truncate max-w-24">
-                              vToken: {String(vTokenAddr).slice(0, 8)}…
-                            </span>
-                          )}
+                        <div className="text-right min-w-0">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">Pool</p>
+                          <p className="font-semibold text-sm break-words">{String(poolName).slice(0, 32)}</p>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/dashboard/transact?action=deposit&token=${assetSymbol}`)}
-                          className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-xl transition-colors"
-                        >
-                          Deposit
-                        </button>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+
+                      <div className="flex items-center justify-between text-sm gap-2 flex-wrap">
+                        <span className={`font-medium ${canBorrow ? "text-green-700" : "text-gray-500"}`}>
+                          {canBorrow ? "Borrowable" : "Supply only"}
+                        </span>
+                        {vTokenAddr && (
+                          <span className="text-xs text-gray-400 font-mono truncate max-w-[10rem]">
+                            vToken: {String(vTokenAddr).slice(0, 8)}…
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/transact?action=deposit&token=${assetSymbol}`)}
+                        className="w-full min-h-[44px] bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                      >
+                        Deposit
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>

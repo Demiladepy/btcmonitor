@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function LandingPage() {
-  const { wallet, address, isConnecting, error, connect, disconnect } = useWallet();
+  const { wallet, address, isConnecting, isAuthBusy, error, connect, disconnect } = useWallet();
   const router = useRouter();
   const [hasStoredWallet, setHasStoredWallet] = useState(false);
   const [storedMethod, setStoredMethod] = useState<ConnectionMethod>("privy");
@@ -17,7 +17,7 @@ export default function LandingPage() {
     const method = (localStorage.getItem(BTC_MONITOR_CONNECTION_METHOD_KEY) as ConnectionMethod) ?? "privy";
     setHasStoredWallet(Boolean(stored));
     setStoredMethod(method);
-  }, [wallet, isConnecting]);
+  }, [wallet, isAuthBusy]);
 
   useEffect(() => {
     if (wallet && address) {
@@ -70,15 +70,15 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={() => handleConnect(storedMethod)}
-              disabled={isConnecting}
-              className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait"
+              disabled={isAuthBusy}
+              className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait min-h-[44px]"
             >
-              {isConnecting ? "Connecting…" : `Continue (${methodLabel(storedMethod)})`}
+              {isAuthBusy ? "Connecting..." : `Continue (${methodLabel(storedMethod)})`}
             </button>
             <button
               type="button"
               onClick={clearStoredWallet}
-              disabled={isConnecting}
+              disabled={isAuthBusy}
               className="w-full h-10 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50"
             >
               Use a different wallet
@@ -93,13 +93,13 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={() => handleConnect("privy")}
-              disabled={isConnecting}
-              className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+              disabled={isAuthBusy}
+              className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3 min-h-[44px]"
             >
-              {connectingMethod === "privy" && isConnecting ? (
+              {connectingMethod === "privy" && isAuthBusy ? (
                 <>
                   <span className="inline-block animate-spin rounded-full border-2 border-white border-t-transparent w-5 h-5" />
-                  Connecting…
+                  Connecting...
                 </>
               ) : (
                 <>
@@ -113,13 +113,13 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={() => handleConnect("cartridge")}
-              disabled={isConnecting}
-              className="w-full h-14 bg-gray-900 hover:bg-gray-700 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+              disabled={isAuthBusy}
+              className="w-full h-14 bg-gray-900 hover:bg-gray-700 text-white text-lg font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3 min-h-[44px]"
             >
               {connectingMethod === "cartridge" && isConnecting ? (
                 <>
                   <span className="inline-block animate-spin rounded-full border-2 border-white border-t-transparent w-5 h-5" />
-                  Connecting…
+                  Connecting...
                 </>
               ) : (
                 <>
@@ -134,13 +134,13 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={() => handleConnect("external")}
-              disabled={isConnecting}
-              className="w-full h-14 border-2 border-amber-500 text-amber-700 text-lg font-semibold rounded-xl hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+              disabled={isAuthBusy}
+              className="w-full h-14 border-2 border-amber-500 text-amber-700 text-lg font-semibold rounded-xl hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3 min-h-[44px]"
             >
               {connectingMethod === "external" && isConnecting ? (
                 <>
                   <span className="inline-block animate-spin rounded-full border-2 border-amber-500 border-t-transparent w-5 h-5" />
-                  Opening wallet…
+                  Opening wallet...
                 </>
               ) : (
                 <>

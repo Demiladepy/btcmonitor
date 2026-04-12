@@ -27,6 +27,8 @@ interface WalletState {
   address: string | null;
   connectionMethod: ConnectionMethod | null;
   isConnecting: boolean;
+  /** True while Privy modal is open or email flow is finishing — keep landing buttons in a loading state. */
+  isAuthBusy: boolean;
   error: string | null;
   connect: (method?: ConnectionMethod) => Promise<void>;
   disconnect: () => void;
@@ -52,6 +54,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // Privy auth state — available because PrivyProvider wraps us in layout.tsx
   const { logout: privyLogout, authenticated, user, getAccessToken, ready } = usePrivy();
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const [wallet, setWallet] = useState<WalletInterface | null>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -60,6 +66,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   // Flag: we called login() and are waiting for the modal to complete
   const [pendingPrivyConnect, setPendingPrivyConnect] = useState(false);
+  /** When true, `connect()` returned early for Privy — skip `finally` clearing `isConnecting`. */
+  const privyAwaitingModalRef = useRef(false);
 
   // useLogin is called ONCE here. Its `login` function opens the Privy email modal.
   // onError fires when the user closes the modal or auth fails.
@@ -69,6 +77,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     },
     onError: () => {
       // User closed the modal or an error occurred — reset loading state
+      privyAwaitingModalRef.current = false;
       setPendingPrivyConnect(false);
       setIsConnecting(false);
       setError("Sign-in cancelled or failed. Please try again.");
@@ -83,6 +92,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [openPrivyModal]);
 
   const disconnect = useCallback(() => {
+    privyAwaitingModalRef.current = false;
+    setPendingPrivyConnect(false);
     localStorage.removeItem(BTC_MONITOR_WALLET_ID_KEY);
     localStorage.removeItem(BTC_MONITOR_WALLET_ADDRESS_KEY);
     localStorage.removeItem(BTC_MONITOR_CONNECTION_METHOD_KEY);
@@ -100,7 +111,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
    * The auth token lets the server verify identity and recover the wallet cross-device.
    */
   const completePrivySetup = useCallback(async (privyUser?: typeof user) => {
-    const resolvedUser = privyUser ?? user;
+    privyAwaitingModalRef.current = false;
+    const resolvedUser = privyUser ?? userRef.current;
     const { OnboardStrategy, accountPresets, AvnuSwapProvider } = await import("starkzap");
     const sdk = await getOrCreateSdk();
 
@@ -174,8 +186,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // When Privy auth completes (modal closed with success), run wallet setup
   useEffect(() => {
     if (!authenticated || !user || !pendingPrivyConnect) return;
+    privyAwaitingModalRef.current = false;
     setPendingPrivyConnect(false);
-    completePrivySetup(user).catch((err) => {
+    completePrivySetup(userRef.current ?? undefined).catch((err) => {
       setError(err instanceof Error ? err.message : "Connection failed");
       setIsConnecting(false);
     });
@@ -185,6 +198,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     async (method: ConnectionMethod = "privy") => {
       setIsConnecting(true);
       setError(null);
+      privyAwaitingModalRef.current = false;
 
       try {
         // ── Option A: Privy — email authentication ─────────────────────────────
@@ -192,12 +206,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           if (!authenticated) {
             // Open Privy email modal. The useEffect above completes setup after the user
             // verifies their email. isConnecting stays true until that effect runs.
+            privyAwaitingModalRef.current = true;
             setPendingPrivyConnect(true);
             openPrivyModalRef.current?.();
             return;
           }
           // Already authenticated (Privy session still active) — skip the modal
-          await completePrivySetup(user ?? undefined);
+          await completePrivySetup(userRef.current ?? undefined);
           return;
         }
 
@@ -287,7 +302,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Connection failed");
       } finally {
-        setIsConnecting(false);
+        if (!privyAwaitingModalRef.current) {
+          setIsConnecting(false);
+        }
       }
     },
     [authenticated, completePrivySetup],
@@ -311,9 +328,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     void connect(storedMethod);
   }, [pathname, wallet, isConnecting, connect, ready, authenticated]);
 
+  const isAuthBusy = isConnecting || pendingPrivyConnect;
+
   return (
     <WalletContext.Provider
-      value={{ wallet, address, connectionMethod, isConnecting, error, connect, disconnect }}
+      value={{
+        wallet,
+        address,
+        connectionMethod,
+        isConnecting,
+        isAuthBusy,
+        error,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>

@@ -168,8 +168,9 @@ async function checkUserPositions(params: {
   prices: PriceMap;
   resend: Resend;
   errors: string[];
+  alertStats: { sent: number };
 }) {
-  const { user, tokens, serverWallet, prices, resend, errors } = params;
+  const { user, tokens, serverWallet, prices, resend, errors, alertStats } = params;
   const prefs = user.alertPreferences;
   if (!prefs || !user.walletAddress || !user.monitoredPairs?.length) return;
 
@@ -387,6 +388,7 @@ async function checkUserPositions(params: {
           telegramSent: doTelegram,
         },
       });
+      alertStats.sent += 1;
     } catch (err) {
       errors.push(
         `${pair.collateralSymbol}/${pair.debtSymbol}@${user.id}: ${
@@ -466,6 +468,7 @@ export async function GET(req: Request) {
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const errors: string[] = [];
+  const alertStats = { sent: 0 };
   let usersChecked = 0;
 
   try {
@@ -504,7 +507,7 @@ export async function GET(req: Request) {
         continue;
       }
       usersChecked++;
-      await checkUserPositions({ user, tokens, serverWallet, prices, resend, errors });
+      await checkUserPositions({ user, tokens, serverWallet, prices, resend, errors, alertStats });
       await maybeSendMarketDigest(user, prices, resend);
     }
   } catch (err) {
@@ -517,6 +520,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     usersChecked,
+    alertsSent: alertStats.sent,
     errors: errors.slice(0, 10),
     timestamp: new Date().toISOString(),
   });

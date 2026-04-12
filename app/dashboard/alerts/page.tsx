@@ -232,7 +232,9 @@ export default function AlertsPage() {
       if (!res.ok) {
         setTestResult(`Error: ${data?.error ?? res.statusText}`);
       } else {
-        setTestResult(`Done — ${data.usersChecked ?? 0} users, ${data.errors?.length ?? 0} errors`);
+        setTestResult(
+          `Done — usersChecked: ${data.usersChecked ?? 0}, alertsSent: ${data.alertsSent ?? 0}, errors: ${data.errors?.length ?? 0}`,
+        );
         await loadHistory().catch(() => undefined);
       }
     } catch (err: unknown) {
@@ -442,7 +444,7 @@ export default function AlertsPage() {
             {telegramEnabled ? (
               <div className="space-y-3">
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 text-sm font-semibold">
-                  Connected
+                  ✅ Connected
                 </span>
                 {telegramChatId && (
                   <p className="text-sm text-gray-500">Chat ID: <span className="font-mono">{telegramChatId}</span></p>
@@ -581,8 +583,8 @@ export default function AlertsPage() {
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
           )}
           {saveSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">
-              Preferences saved.
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700 font-semibold">
+              Saved ✓
             </div>
           )}
           <button

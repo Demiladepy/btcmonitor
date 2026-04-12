@@ -1,124 +1,72 @@
 # BTC Health Monitor
 
-> The first DeFi risk management dashboard built on Starkzap v2 — monitor your Vesu lending positions, simulate actions before signing, and get DM alerts before liquidation.
+Real-time liquidation monitoring for Bitcoin positions on Vesu (Starknet).
 
 ## What it does
 
-Deposit ETH or BTC as collateral into Vesu lending pools on Starknet, borrow USDC against it, and monitor your health ratio in real time. The live borrow/repay simulator previews exactly how each action will change your position *before* you sign. Push alerts fire when your ratio drops toward liquidation — via browser notification **and** direct Telegram or email messages.
+- Connect with email, social login (Cartridge), or Argent / Braavos
+- Monitor WBTC, LBTC, TBTC, and ETH positions on Vesu in real time
+- See health ratios, liquidation prices, and distance to liquidation
+- Swap, deposit, borrow, and repay with `feeMode: "sponsored"` (AVNU paymaster)
+- Telegram and email alerts when positions approach liquidation
+- Background monitoring via Vercel Cron (`/api/cron/monitor`)
 
-## Technical highlights
+## Built with Starkzap
 
-- `wallet.lending().quoteHealth()` — simulates borrow/repay impact BEFORE the user signs. Shows projected health ratio live as they type the amount (400ms debounce). Both current and projected arcs render simultaneously in the SVG gauge.
-- `wallet.lending().getPosition()` + `getHealth()` — polled every 15s for real-time collateralization state
-- `wallet.lending().getMarkets()` — discovers all available Vesu pools dynamically, renders a switchable market table
-- Full Vesu lending stack: deposit, borrow, repay, withdrawMax — all gasless via AVNU paymaster (`feeMode: "sponsored"`)
-- Sessionless wallet: 248-bit Stark-safe private key generated with `crypto.getRandomValues()`, stored in `localStorage` — same address on every reload, no seed phrase
-- **DM Alert System**: Vercel serverless functions post to Telegram Bot API and Resend (email) when health drops below threshold or recovers — bot tokens never exposed to browser
-- 5-minute client-side + server-side rate limiting prevents alert spam
-- Push alerts via Web Notifications API when health ratio crosses user-defined threshold (stored in `localStorage`)
-- 48-point health history ring buffer with Recharts area chart
+Every blockchain interaction uses the [Starkzap](https://www.npmjs.com/package/starkzap) SDK:
 
-## SDK APIs used
+- `sdk.onboard()` — Privy + Cartridge wallet connection
+- `wallet.lending().getPosition()` — Vesu position reads
+- `wallet.lending().getHealth()` — health ratio checks
+- `wallet.lending().quoteHealth()` — borrow impact before you sign
+- `wallet.lending().deposit()` / `borrow()` / `repay()` — Vesu interactions
+- `wallet.swap()` — AVNU token swaps
+- `wallet.transfer()` — token sends
+- `feeMode: "sponsored"` — gasless transactions where the paymaster applies
 
-```
-wallet.lending().getMarkets()
-wallet.lending().getPosition()
-wallet.lending().getHealth()
-wallet.lending().quoteHealth()
-wallet.lending().deposit()
-wallet.lending().borrow()
-wallet.lending().repay()
-wallet.lending().withdrawMax()
-wallet.lending().getMaxBorrowAmount()
-```
+## Live demo
 
-## Stack
+_Add your deployed Vercel URL here._
 
-- React + Vite + TypeScript
-- [starkzap](https://www.npmjs.com/package/starkzap) — Starknet SDK
-- [recharts](https://recharts.org) — health history chart
-- [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) — Telegram DM alerts (server-side)
-- [resend](https://resend.com) — email alerts (server-side)
-- [@vercel/node](https://vercel.com/docs/functions/runtimes/node-js) — serverless API functions
-
-## How to run
+## Quick start
 
 ```bash
+git clone https://github.com/Demiladepy/btcmonitor.git
+cd btcmonitor
 npm install
-cp .env .env.local   # fill in your tokens (see below)
+cp .env.example .env
+# Fill in keys (Privy, DATABASE_URL, AVNU paymaster, etc.)
+npx prisma migrate deploy
 npm run dev
 ```
 
-## Environment variables
+> This repository may be named `btchealth` locally; use your actual Git remote if it differs.
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | **Yes** (API + worker) | Supabase Postgres URI (pooler recommended for Vercel). See `.env.example`. |
-| `DIRECT_URL` | Optional | Postgres **direct** URI (port 5432) for `prisma migrate` / shadow DB; can match `DATABASE_URL` for simple setups. |
-| `TELEGRAM_BOT_TOKEN` | For Telegram alerts | Create via [@BotFather](https://t.me/BotFather) |
-| `RESEND_API_KEY` | For email alerts | Get from [resend.com](https://resend.com) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Optional | If you use the Supabase JS client |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase anon / publishable key (not `service_role`) |
-| `VITE_APP_URL` | Optional | Your deployed URL for links in alert messages |
-| `STARKNET_SEPOLIA_RPC_URL` | Optional | Upstream RPC when the app uses Sepolia (see `/api/starknet-rpc`) |
-| `STARKNET_MAINNET_RPC_URL` | Optional | Upstream RPC when the app uses Mainnet |
-| `MONITOR_STARKNET_NETWORK` | Optional | Worker + Telegram `/status` chain: `mainnet` or `sepolia` (defaults: mainnet in production, Sepolia in dev) |
+## Architecture
 
-> All sensitive keys are server-side only (no `VITE_` prefix). They are never bundled into the browser.
+- **Frontend:** Next.js 14 (App Router), Tailwind CSS, Plus Jakarta Sans
+- **Chain:** Starkzap SDK on Starknet mainnet
+- **Auth:** Privy (email) + Cartridge (controller) + StarknetKit (Argent / Braavos)
+- **Data:** PostgreSQL + Prisma (alert preferences, history, Telegram link codes)
+- **Monitoring:** Vercel Cron → `GET /api/cron/monitor`
+- **Alerts:** Telegram Bot API + Resend email
 
-### Supabase database
+## Health check
 
-1. Create a project at [supabase.com](https://supabase.com) and copy the **Database → Connection string** (URI).
-2. Copy [`.env.example`](.env.example) to `.env` or `.env.local` and set `DATABASE_URL` (and optional `DIRECT_URL`).
-3. Apply migrations: `npx prisma migrate deploy` (use a direct connection if the pooler rejects migrations).
+`GET /api/health` returns JSON with `status: "ok"` and booleans for configured services (Privy, paymaster, monitor, Telegram, email).
 
-## Setting up Telegram alerts
+## Screenshots
 
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot` and follow the prompts — copy the token
-3. Add it to `.env` as `TELEGRAM_BOT_TOKEN=<token>`
-4. Start a chat with your new bot
-5. Find your personal **Chat ID** via [@userinfobot](https://t.me/userinfobot)
-6. In the app, open the **DM Alerts** panel → paste your Chat ID → Save
+_Add 3–4 screenshots: landing page, dashboard with positions, Transact page, Alerts page._
 
-## Deploy
+## Demo video
 
-```bash
-npm run build
-vercel deploy --prod
-# Set TELEGRAM_BOT_TOKEN and RESEND_API_KEY in Vercel → Settings → Environment Variables
-```
+_Add a 30s YouTube or Loom link here (sign-in → dashboard → position → swap → alerts → Telegram)._
 
-The `api/` directory is automatically detected by Vercel as serverless functions.
+## Ecosystem
 
-## Architecture notes
+To list this project under community demos, open a PR to [awesome-starkzap](https://github.com/keep-starknet-strange/awesome-starkzap) with a short description and link to this repo.
 
-**Wallet**: A 248-bit Stark-safe private key is generated with `crypto.getRandomValues(31 bytes)` and stored in `localStorage`. This gives users a deterministic address across sessions without a seed phrase. Call `disconnect()` to clear and regenerate.
+## License
 
-**Health ratio**: `collateralValue / debtValue` where both values are USD-denominated on a `1e18` scale from Vesu. Ratio `> 1.5` = safe, `1.2–1.5` = at risk, `< 1.2` = danger. Liquidation occurs at `1.0`.
-
-**Alert flow**: `useAlerts` detects threshold crossings → calls `sendAlert` from `useNotifications` → POSTs to `/api/send-telegram` or `/api/send-email` → Vercel serverless function delivers the message. Rate limited to once per 5 minutes per alert type, both client-side (localStorage) and server-side (in-memory map).
-
-**Token pair**: Defaults to ETH/USDC on Sepolia. After `getMarkets()` logs the pool list, swap `COLLATERAL_TOKEN` in `src/lib/tokens.ts` to WBTC/tBTC if available.
-
-## Judge demo (bounty checklist)
-1. Set environment variables:
-   - `PRIVY_APP_ID` / `PRIVY_APP_SECRET`
-   - `DATABASE_URL`
-   - `MONITOR_PRIVATE_KEY` (worker read-only health checks + position reads)
-   - `NEXT_PUBLIC_AVNU_PAYMASTER_API_KEY` (AVNU sponsored transactions)
-   - `TELEGRAM_BOT_TOKEN` (Telegram bot)
-2. Sign in (landing page) to create/reuse your wallet.
-3. Ensure your wallet has a `WBTC/USDC` position with debt:
-   - Deposit WBTC as collateral
-   - Borrow USDC so you can repay later
-4. Open `Alerts`:
-   - Set thresholds (especially `Critical Threshold`) so it’s easy to reach critical health during the demo
-   - Toggle `Auto-protect (MVP)` ON
-5. Connect Telegram (Alerts page -> Connect Telegram -> send `/start`).
-6. Trigger critical health:
-   - Use `Transact` -> borrow more (or other actions) until health becomes critical
-   - Wait up to 1 minute for the worker, OR use Telegram `/repay` as a manual trigger
-7. Verify:
-   - Telegram message includes an execution note and tx hash
-   - `Alerts` -> Alert History shows a new critical record for `WBTC/USDC`
+MIT
