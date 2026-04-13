@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
+    "@cartridge/controller": "^0.13.9",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "latest",
     "@privy-io/node": "latest",
