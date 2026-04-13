@@ -166,8 +166,9 @@ async function checkUserPositions(params: {
   resend: Resend;
   errors: string[];
   alertStats: { sent: number };
+  dryRun: boolean;
 }) {
-  const { user, tokens, serverWallet, prices, resend, errors, alertStats } = params;
+  const { user, tokens, serverWallet, prices, resend, errors, alertStats, dryRun } = params;
   const prefs = user.alertPreferences;
   if (!prefs || !user.walletAddress || !user.monitoredPairs?.length) return;
 
@@ -349,37 +350,39 @@ async function checkUserPositions(params: {
       const doTelegram =
         shouldNotify && Boolean(prefs.telegramEnabled) && Boolean(user.telegramChatId);
 
-      if (doEmail && emailTo) {
-        const emoji = level === "critical" ? "🚨" : level === "danger" ? "🔴" : "⚠️";
-        await resend.emails
-          .send({
-            from: "BTC Monitor <alerts@btcmonitor.app>",
-            to: emailTo,
-            subject: `${emoji} Position Alert: ${pair.collateralSymbol}/${pair.debtSymbol}`,
-            text: msg.replace(/<[^>]+>/g, ""), // strip HTML for plain text email
-          })
-          .catch(() => undefined);
-      }
+      if (!dryRun) {
+        if (doEmail && emailTo) {
+          const emoji = level === "critical" ? "🚨" : level === "danger" ? "🔴" : "⚠️";
+          await resend.emails
+            .send({
+              from: "BTC Monitor <alerts@btcmonitor.app>",
+              to: emailTo,
+              subject: `${emoji} Position Alert: ${pair.collateralSymbol}/${pair.debtSymbol}`,
+              text: msg.replace(/<[^>]+>/g, ""), // strip HTML for plain text email
+            })
+            .catch(() => undefined);
+        }
 
-      if (doTelegram && user.telegramChatId) {
-        await sendTelegram(user.telegramChatId, msg);
-      }
+        if (doTelegram && user.telegramChatId) {
+          await sendTelegram(user.telegramChatId, msg);
+        }
 
-      await prisma.alert.create({
-        data: {
-          userId: user.id,
-          collateralSymbol: pair.collateralSymbol,
-          debtSymbol: pair.debtSymbol,
-          level,
-          healthRatio: new Prisma.Decimal(ratio),
-          message: msg,
-          liquidationPrice: liquidationPrice ?? undefined,
-          currentPrice: currentPrice ?? undefined,
-          distancePct: distancePct ?? undefined,
-          emailSent: doEmail,
-          telegramSent: doTelegram,
-        },
-      });
+        await prisma.alert.create({
+          data: {
+            userId: user.id,
+            collateralSymbol: pair.collateralSymbol,
+            debtSymbol: pair.debtSymbol,
+            level,
+            healthRatio: new Prisma.Decimal(ratio),
+            message: msg,
+            liquidationPrice: liquidationPrice ?? undefined,
+            currentPrice: currentPrice ?? undefined,
+            distancePct: distancePct ?? undefined,
+            emailSent: doEmail,
+            telegramSent: doTelegram,
+          },
+        });
+      }
       alertStats.sent += 1;
     } catch (err) {
       errors.push(
@@ -393,7 +396,7 @@ async function checkUserPositions(params: {
 
 // ── Market digest ─────────────────────────────────────────────────────────────
 
-async function maybeSendMarketDigest(user: any, prices: PriceMap, resend: Resend) {
+async function maybeSendMarketDigest(user: any, prices: PriceMap, resend: Resend, dryRun: boolean) {
   const prefs = user.alertPreferences;
   if (!prefs?.notifyMarket) return;
   if (!prefs.emailEnabled && !prefs.telegramEnabled) return;
@@ -420,32 +423,38 @@ async function maybeSendMarketDigest(user: any, prices: PriceMap, resend: Resend
 
   const msg = `BTC Health — market snapshot\nBTC $${prices.bitcoin.toLocaleString("en-US", { maximumFractionDigits: 0 })}${btcChange}\nETH $${prices.ethereum.toLocaleString("en-US", { maximumFractionDigits: 0 })}\nSTRK $${prices.starknet.toFixed(4)}${starkChange}\nYour pairs: ${pairSummary || "—"}`;
 
-  if (doEmail && emailTo) {
-    await resend.emails
-      .send({
-        from: "BTC Monitor <alerts@btcmonitor.app>",
-        to: emailTo,
-        subject: "BTC Health — market snapshot",
-        text: msg,
-      })
-      .catch(() => undefined);
-  }
-  if (doTelegram && user.telegramChatId) {
-    await sendTelegram(user.telegramChatId, msg);
-  }
+  if (!dryRun) {
+    if (doEmail && emailTo) {
+      await resend.emails
+        .send({
+          from: "BTC Monitor <alerts@btcmonitor.app>",
+          to: emailTo,
+          subject: "BTC Health — market snapshot",
+          text: msg,
+        })
+        .catch(() => undefined);
+    }
+    if (doTelegram && user.telegramChatId) {
+      await sendTelegram(user.telegramChatId, msg);
+    }
 
-  await prisma.alertPreferences.update({
-    where: { userId: user.id },
-    data: { lastMarketDigestAt: new Date() },
-  });
+    await prisma.alertPreferences.update({
+      where: { userId: user.id },
+      data: { lastMarketDigestAt: new Date() },
+    });
+  }
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
-  if (process.env.NODE_ENV === "production" && process.env.CRON_SECRET) {
+  const url = new URL(req.url);
+  const dryRun = url.searchParams.get("dry_run") === "1";
+
+  // Dry-run requests are safe (no emails, no DB writes) so they bypass the CRON_SECRET guard.
+  if (!dryRun && process.env.NODE_ENV === "production" && process.env.CRON_SECRET) {
     const authHeader = req.headers.get("authorization");
-    const urlSecret = new URL(req.url).searchParams.get("secret");
+    const urlSecret = url.searchParams.get("secret");
     if (
       authHeader !== `Bearer ${process.env.CRON_SECRET}` &&
       urlSecret !== process.env.CRON_SECRET
@@ -494,8 +503,8 @@ export async function GET(req: Request) {
         continue;
       }
       usersChecked++;
-      await checkUserPositions({ user, tokens, serverWallet, prices, resend, errors, alertStats });
-      await maybeSendMarketDigest(user, prices, resend);
+      await checkUserPositions({ user, tokens, serverWallet, prices, resend, errors, alertStats, dryRun });
+      await maybeSendMarketDigest(user, prices, resend, dryRun);
     }
   } catch (err) {
     return NextResponse.json(
@@ -506,6 +515,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    dryRun,
     usersChecked,
     alertsSent: alertStats.sent,
     errors: errors.slice(0, 10),

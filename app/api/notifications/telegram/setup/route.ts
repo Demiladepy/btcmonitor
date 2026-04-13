@@ -14,12 +14,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "TELEGRAM_BOT_TOKEN not configured" }, { status: 500 });
   }
 
-  // Derive the app URL: explicit env var wins, then Host header, then Vercel system env.
-  const host =
-    process.env.VITE_APP_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    process.env.VERCEL_URL?.trim()?.replace(/^/, "https://") ||
-    `https://${req.headers.get("host")}`;
+  // Derive the app URL: explicit env var wins, then Vercel system env, then Host header.
+  // VERCEL_URL is hostname-only (no scheme), so we prepend https://.
+  // Strip any trailing slash so the final URL never has a double slash.
+  const host = (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : null) ||
+    `https://${req.headers.get("host")}`
+  ).replace(/\/$/, "");
 
   const webhookUrl = `${host}/api/notifications/telegram/webhook`;
 

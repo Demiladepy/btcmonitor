@@ -227,22 +227,21 @@ export default function AlertsPage() {
     setTestRunning(true);
     setTestResult(null);
     try {
-      const res = await fetch("/api/cron/monitor");
+      const res = await fetch("/api/cron/monitor?dry_run=1");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setTestResult(`Error: ${data?.error ?? res.statusText}`);
       } else {
         setTestResult(
-          `Done — usersChecked: ${data.usersChecked ?? 0}, alertsSent: ${data.alertsSent ?? 0}, errors: ${data.errors?.length ?? 0}`,
+          `Dry run — usersChecked: ${data.usersChecked ?? 0}, alertsWouldSend: ${data.alertsSent ?? 0}, errors: ${data.errors?.length ?? 0} (no emails/Telegram sent)`,
         );
-        await loadHistory().catch(() => undefined);
       }
     } catch (err: unknown) {
       setTestResult(err instanceof Error ? err.message : "Test failed");
     } finally {
       setTestRunning(false);
     }
-  }, [loadHistory]);
+  }, []);
 
   const handleRegisterBot = useCallback(async () => {
     setBotRegistering(true);
@@ -304,7 +303,7 @@ export default function AlertsPage() {
               disabled={testRunning}
               className="text-xs font-semibold px-4 py-2 rounded-xl bg-white border border-green-300 text-green-800 hover:bg-green-100 disabled:opacity-50"
             >
-              {testRunning ? "Running…" : "▶ Test Monitor"}
+              {testRunning ? "Running…" : "▶ Dry Run"}
             </button>
           </div>
         </div>
